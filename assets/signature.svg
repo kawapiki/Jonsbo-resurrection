@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="62 58 388 384" fill="none" role="img" aria-labelledby="title">
+  <title id="title">Floating wheelcap neon trademark</title>
+  <defs>
+    <linearGradient id="neon" x1="110" y1="350" x2="391" y2="170" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#beff00"/>
+      <stop offset=".24" stop-color="#70ff98"/>
+      <stop offset=".48" stop-color="#63fff2"/>
+      <stop offset=".64" stop-color="#c646ff"/>
+      <stop offset=".82" stop-color="#f000ff"/>
+      <stop offset="1" stop-color="#9659ff"/>
+    </linearGradient>
+    <filter id="bloom" x="-45%" y="-45%" width="190%" height="190%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="11"/>
+    </filter>
+    <filter id="halo" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="3.5"/>
+    </filter>
+    <!-- One source half, reflected about x=256: exact bilateral geometry. -->
+    <g id="left-half">
+      <path d="M122 181C134 156 156 128 174 128C184 124 194 130 202 140C212 154 224 175 232 191"/>
+      <path d="M122 181C126 193 144 196 160 198L212 205C222 207 229 201 232 191"/>
+      <path d="M122 181V349C122 369 139 383 157 391C168 397 172 391 176 379L205 299.278"/>
+      <path d="M202 140C201 135 200 131 200 126C200 110 225 96 256 96"/>
+      <path d="M256 157C246 157 236 174 232 191C237 210 246 222 256 226"/>
+      <circle cx="194" cy="265" r="36"/>
+      <path d="M122 237C91 245 91 282 122 292"/>
+    </g>
+    <g id="mark" stroke-linecap="round" stroke-linejoin="round">
+      <use href="#left-half"/>
+      <use href="#left-half" transform="translate(512 0) scale(-1 1)"/>
+      <path d="M256 96V157"/>
+    </g>
+  </defs>
+  <use href="#mark" stroke="url(#neon)" stroke-width="16" opacity=".65" filter="url(#bloom)"/>
+  <use href="#mark" stroke="url(#neon)" stroke-width="9" opacity=".9" filter="url(#halo)"/>
+  <use href="#mark" stroke="url(#neon)" stroke-width="5.5"/>
+  <use href="#mark" stroke="#f1ffff" stroke-width="2.3" opacity=".95"/>
+</svg>

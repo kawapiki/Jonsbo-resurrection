@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows amd64 / Go ${{ matrix.go }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.24.x', 'stable']
+    env:
+      GOARCH: amd64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - name: Test without physical hardware
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Build Windows controller
+        run: ./scripts/build.ps1
+
+  portable:
+    name: Portable packages / Ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      - name: Test portable packages
+        run: go test ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./examples/event-producer
+      - name: Vet portable packages
+        run: go vet ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./examples/event-producer
+      - name: Build portable packages
+        run: go build ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./examples/event-producer

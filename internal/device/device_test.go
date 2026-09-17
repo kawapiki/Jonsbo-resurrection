@@ -7,8 +7,8 @@ func TestParseInterfaceAllowsOnlySupportedHardware(t *testing.T) {
 		path, serial, kind string
 		ok                 bool
 	}{
-		{`\\?\usb#vid_1cbe&pid_0035#0628c908f4ca0504#{88bae032-5a81-49f0-bc3d-a4ff138216d6}`, "0628C908F4CA0504", "pump", true},
-		{`\\?\usb#vid_43a8&pid_0e61#bcd32929c0#{12345678-1234-1344-1234-123456789abc}`, "BCD32929C0", "fan", true},
+		{`\\?\usb#vid_1cbe&pid_0035#0123456789abcdef#{88bae032-5a81-49f0-bc3d-a4ff138216d6}`, "0123456789ABCDEF", "pump", true},
+		{`\\?\usb#vid_43a8&pid_0e61#aabbccddee#{12345678-1234-1344-1234-123456789abc}`, "AABBCCDDEE", "fan", true},
 		{`\\?\usb#vid_1cbe&pid_0088#other#{guid}`, "", "", false},
 		{"garbage", "", "", false},
 	} {

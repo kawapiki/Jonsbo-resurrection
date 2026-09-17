@@ -1,68 +1,96 @@
-# JONSBO display controller for Windows
+# Jonsbo Resurrection
 
-A Go command-line prototype controlling the four screens of a JONSBO TF3-360SC through the existing Windows WinUSB driver. No vendor application, custom driver, cgo, or third-party Go modules are required at runtime.
+A modular Go controller for the four screens on a **JONSBO TF3-360SC**, starting with Windows amd64. It sends images directly through WinUSB and exposes live module data, image previews, events, and screen assignments through a local HTTP API.
 
-**Hardware tested:** all four screens independently displayed numbered RGB patterns on 17 September 2026, with correct orientation confirmed by the owner. This is the static-image milestone; a background service, live sensors, layout editor and notification/agent API are not implemented yet.
+This is an experimental, community-oriented project, independent of JONSBO. Hardware support has been verified on one TF3-360SC installation. It changes display content, not cooling settings or firmware.
 
-## Run
+## What works
 
-Close JONSBO completely, including its tray process, before running this controller. JONSBO holding the USB handles causes Windows to return `Access is denied`, even for an administrator. Normal display operation has been verified without administrator rights once it is closed.
+- Hardware module: CPU usage and Ryzen temperature, system RAM, AMD GPU usage/temperature/power/clocks/fan speed, and dedicated VRAM used/total.
+- Pump summary and separate CPU, GPU, and RAM fan views.
+- Module lifecycle/status, authenticated JSON API, server-sent state updates, PNG previews, and live view assignment.
+- Example Go module with message events, a generated sparkline, and an animated progress bar; an external event-producer boilerplate.
+- Static PNG/JPEG upload, orientation correction, per-display workers, and reconnection attempts for selected serials.
 
-From the project directory in PowerShell:
+Claude/Codex account/task adapters, Windows notification capture, historical chart storage, video decoding/playback, a layout editor, and a module marketplace are **not implemented**. The extension interfaces and example are the starting point for that work.
 
-```powershell
-.\bin\jonsbo.exe list
-.\bin\jonsbo.exe inspect --serial 0628C908F4CA0504
-.\bin\jonsbo.exe pattern --serial 0628C908F4CA0504 --number 1
-.\bin\jonsbo.exe pattern --serial BCD32929C0 --number 2
-.\bin\jonsbo.exe image --serial BCD32929C0 --file C:\Images\status.png
-```
+## Download for Windows
 
-Use the serial numbers returned by `list` on a different unit. Every image operation requires an exact serial; it never selects an arbitrary USB device.
+Get the [latest versioned release](https://github.com/kawapiki/Jonsbo-resurrection/releases/latest), extract the complete ZIP, and run **JonsboResurrection.exe**. The signature icon appears in the Windows tray. Right-click it to start/stop monitoring, open logs, or enable launch at sign-in. No Go installation is needed.
 
-| Screen label | Serial on this computer | Logical canvas | Native transfer canvas | Default clockwise rotation |
-| --- | --- | --- | --- | --- |
-| 1 — pump | 0628C908F4CA0504 | 640 × 480 | 640 × 480 | 0° |
-| 2 — fan | BCD32929C0 | 640 × 180 | 180 × 640 | 90° |
-| 3 — fan | BCD32AE5C2 | 640 × 180 | 180 × 640 | 90° |
-| 4 — fan | BCD336DBCE | 640 × 180 | 180 × 640 | 90° |
+See the [Windows app guide](docs/windows-app.md) for startup, optional elevated CPU temperature support, updates and troubleshooting. Public binaries are currently unsigned.
 
-Fan positions left/middle/right have not been assigned; the numbers identify the physical screens. The landscape default matches this installation. Override it with `--rotate 0`, `90`, `180` or `270` for other mounting orientations.
+## Build from source
 
-Images may be PNG or JPEG. They are resized to fit, with black letterboxing, using nearest-neighbor sampling. Alpha is composited on black. Source images are limited to 40 megapixels. Use an image at the logical canvas resolution for exact pixels.
-
-`--preview preview.png` writes the logical image before panel rotation. Example:
-
-```powershell
-.\bin\jonsbo.exe image --serial BCD32AE5C2 --file C:\Images\agent-status.png --preview preview.png
-```
-
-Successful commands print JSON with transfer duration, bytes written and raw device replies. A hardware acknowledgement proves the transaction completed; it does not by itself prove what a person sees. Errors exit nonzero. Ctrl+C cancels between USB operations; a pending transfer has a two-second timeout.
-
-## Build and test
-
-Windows with Go 1.24 or newer:
+Build from the repository root with Go 1.24+ on Windows amd64:
 
 ```powershell
 .\scripts\build.ps1
+.\bin\jonsbo.exe list
+# API and image previews; does not take control of USB displays:
+.\bin\jonsbo.exe serve --example
 ```
 
-The script runs `go test ./...`, `go vet ./...`, then builds `bin/jonsbo.exe`. It uses the project-local verified Go toolchain if present, otherwise `go` from PATH. No module downloads are needed.
+Close the original JONSBO app, including its tray process, before driving the displays:
 
-## How it works
+```powershell
+# Hardware dashboards plus the local API:
+.\bin\jonsbo.exe serve --all
+# Hardware dashboards without HTTP:
+.\bin\jonsbo.exe monitor --all
+```
 
-- `internal/device`: supported IDs and explicit serial selection.
-- `internal/winusb`: SetupAPI enumeration, handle ownership and bounded USB operations.
-- `internal/protocol`: separate pump and fan packet encoders.
-- `internal/imageutil`: resizing, rotation, BGR conversion and test patterns.
-- `internal/display`: ordered transactions, stale reply handling, acknowledgement checks and cancellation.
+CPU temperature requires the separately installed **signed PawnIO driver** and administrator access. Other supported readings work without elevation. For hidden background operation after installing the optional sensor driver:
 
-The pump receives a mode command, a transparent PNG layer clear and a JPEG image. Its replies echo the opcode and timestamp, with status `C8` on observed successes. The fan displays receive raw BGR24 pixels in 720 numbered records and acknowledge the completed frame with `62`.
+```powershell
+.\scripts\start-server.ps1 -Elevated -Displays -Example
+.\scripts\stop-monitor.ps1 -Server
+```
 
-The application changes display content only. It contains no firmware flashing or cooling-control operations. Handles close when the command exits, and each invocation rediscovers connected devices. There is no resident process or automatic reconnect loop yet. JONSBO can be started again to restore its themes.
+The API listens on `127.0.0.1:8787`. On first use it creates `bin/api-token`; every route requires that bearer token. Keep the token file private and out of commits. No account login or cloud service is required. The CLI does not add startup entries; use the tray startup controls to opt in.
 
-## Research and evidence
+```powershell
+$headers = @{Authorization = 'Bearer ' + (Get-Content .\bin\api-token -Raw).Trim()}
+Invoke-RestMethod http://127.0.0.1:8787/v1/modules -Headers $headers
+Invoke-RestMethod http://127.0.0.1:8787/v1/modules/hardware -Headers $headers
+# With the example module enabled:
+go run ./examples/event-producer -token-file bin/api-token -message 'Build complete'
+```
 
-See [protocol notes](docs/protocol.md), [verification results](docs/verification.md), and the detailed source-review notes in `docs/`.
+## Customize and extend
 
-Vendor binaries/decompiled code, USB captures and development toolchains are local ignored research artifacts under `research/` and `.tools/`; they are not part of the source deliverable. Captures may include rendered screen content. The Go implementation was written from protocol observations and packet descriptions; it does not load the vendor executable or its libraries.
+Start with [configs/example.json](configs/example.json), then run:
+
+```powershell
+.\bin\jonsbo.exe serve --config configs/example.json --all
+```
+
+Configuration paths are relative to the current working directory. Without `--all`, configured display assignments are unused and USB remains untouched. With `--all`, the default assignments are pump → `hardware/summary`, then fans in serial order → `hardware/cpu`, `hardware/gpu`, `hardware/memory`. Fan rotation defaults to 90° clockwise for the verified horizontal installation; configure each screen for your mounting orientation.
+
+A module publishes JSON and can optionally implement image rendering and typed event handling. Register its factory in `cmd/jonsbo/runtime_windows.go`; the API and USB layer need no module-specific changes. Modules are trusted compiled-in Go code. External integrations can run in any language and send JSON events through the API.
+
+- [Module author guide and boilerplate](docs/modules.md)
+- [HTTP API](docs/api.md)
+- [Architecture](docs/architecture.md)
+- [Hardware support and sensor requirements](docs/hardware-monitoring.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security model](SECURITY.md)
+- [Release preparation](docs/releasing.md)
+
+## Other commands
+
+```powershell
+.\bin\jonsbo.exe stats --count 5
+.\bin\jonsbo.exe inspect --serial YOUR_DISPLAY_SERIAL
+.\bin\jonsbo.exe image --serial YOUR_DISPLAY_SERIAL --file image.png --rotate 90
+.\bin\jonsbo.exe pattern --serial YOUR_DISPLAY_SERIAL --number 2 --preview preview.png
+.\bin\jonsbo.exe stop --server
+```
+
+`stats` keeps its original hardware JSON shape. API responses wrap that data with module identity, status, and timestamps. Missing sensor values are `null` / `--`, not synthetic zeroes. The conservative full-frame USB path is suitable for dashboards; configurable frame refresh is 500 ms or slower and is not a video-rate playback implementation.
+
+## License and dependencies
+
+Project source: [MIT](LICENSE), with the repository maintainer's copyright notice. The embedded signed PawnIO module retains its LGPL license and matching source archive in `third_party/pawnio/`. See [third-party notices](THIRD_PARTY_NOTICES.md). There are no third-party Go modules or CGO requirements; Windows sensor and USB drivers remain runtime dependencies.
+
+Downloaded tools, original vendor binaries, decompiled research, USB captures, logs, and API tokens are excluded from source and binary packaging. See [protocol notes](docs/protocol.md) and [verification history](docs/verification.md) for observed hardware behavior.

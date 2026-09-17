@@ -32,3 +32,5 @@ First recover and cross-check packet structure against captured vendor transfers
 ## Implementation status
 
 Approved and implemented as a static-image CLI on 2026-09-17. All four screens have been visually verified. See protocol.md and verification.md for evidence. The background worker/reconnection architecture and subsequent event API remain future work; the CLI owns one device per invocation and rediscovers it on each run.
+
+Historical note: the subsequent worker/module/API work is now implemented. See architecture.md and api.md; the status above records the original static-image milestone.

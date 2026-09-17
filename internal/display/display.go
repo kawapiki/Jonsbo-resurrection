@@ -15,8 +15,8 @@ import (
 	"os"
 	"time"
 
-	"jonsbo-display/internal/imageutil"
-	"jonsbo-display/internal/protocol"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/imageutil"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/protocol"
 )
 
 type Transport interface {

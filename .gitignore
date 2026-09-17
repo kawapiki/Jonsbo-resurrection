@@ -1,5 +1,12 @@
 .tools/
+.cache/
 bin/
 research/captures/
 research/vendor/
 *.log
+research/previews/
+dist/
+config.local.json
+*.token
+api-token
+*.syso

@@ -11,7 +11,7 @@ import (
 	"time"
 	"unsafe"
 
-	"jonsbo-display/internal/device"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/device"
 )
 
 var (

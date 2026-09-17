@@ -6,10 +6,10 @@ Date: 2026-09-17. Platform: Windows amd64, Go 1.27.1 (project-local archive SHA-
 
 | Screen | Serial | Final static transaction | Bytes including initialization |
 | --- | --- | --- | --- |
-| Pump 1 | 0628C908F4CA0504 | 27 ms, matching opcode/timestamp replies | 28149 |
-| Fan 2 | BCD32929C0 | 352 ms with final input-drain fix, reset59 and frame62 replies | 368704 |
-| Fan 3 | BCD32AE5C2 | 249 ms, reset59 and frame62 replies | 368704 |
-| Fan 4 | BCD336DBCE | 250 ms, reset59 and frame62 replies | 368704 |
+| Pump 1 | PUMP_SERIAL | 27 ms, matching opcode/timestamp replies | 28149 |
+| Fan 2 | FAN_SERIAL_1 | 352 ms with final input-drain fix, reset59 and frame62 replies | 368704 |
+| Fan 3 | FAN_SERIAL_2 | 249 ms, reset59 and frame62 replies | 368704 |
+| Fan 4 | FAN_SERIAL_3 | 250 ms, reset59 and frame62 replies | 368704 |
 
 These are single static initialization-plus-frame measurements, **not** sustained frame rates or a benchmark against the vendor application. The fan sequence includes a deliberate 200 ms reset delay. The final review fix adds a 100 ms idle receive boundary, hardware-tested on fan 2; fan 3/4 measurements precede that fix. Process startup is excluded.
 

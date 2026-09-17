@@ -12,24 +12,58 @@ import (
 	"os/signal"
 	"time"
 
-	"jonsbo-display/internal/device"
-	"jonsbo-display/internal/display"
-	"jonsbo-display/internal/imageutil"
-	"jonsbo-display/internal/winusb"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/device"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/display"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/imageutil"
+	trayui "github.com/kawapiki/Jonsbo-resurrection/internal/tray"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/winusb"
 )
+
+var version = "dev"
+var revision = "unknown"
+var guiBuild = "false"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "jonsbo:", err)
+		if guiBuild == "true" && (len(os.Args) == 1 || os.Args[1] == "tray" || os.Args[1] == "startup") {
+			trayui.ShowError(err)
+		}
 		os.Exit(1)
 	}
 }
 func run(args []string) error {
 	if len(args) == 0 {
-		fmt.Println("Usage: jonsbo list | inspect --serial SERIAL | image --serial SERIAL --file IMAGE | pattern --serial SERIAL --number 1 [--preview FILE]")
-		return nil
+		return tray(nil)
 	}
 	switch args[0] {
+	case "version", "--version":
+		fmt.Printf("Jonsbo Resurrection %s (%s)\n", version, revision)
+		return nil
+	case "tray":
+		return tray(args[1:])
+	case "startup":
+		return startup(args[1:])
+	case "help", "--help", "-h":
+		fmt.Println("Usage: jonsbo serve [--all] [--example] | stats | monitor --all | list | inspect --serial SERIAL | image --serial SERIAL --file IMAGE | pattern --serial SERIAL --number 1 [--preview FILE]")
+		fmt.Println("Desktop: tray | startup enable [--elevated] | startup disable | startup status | stop --tray | version")
+		return nil
+	case "serve":
+		return serve(args[1:])
+	case "stop":
+		name := monitorName
+		if len(args) == 2 && args[1] == "--server" {
+			name = serverName
+		} else if len(args) == 2 && args[1] == "--tray" {
+			name = trayName
+		} else if len(args) != 1 {
+			return fmt.Errorf("usage: stop [--server]")
+		}
+		return signalMonitorStop(name)
+	case "stats":
+		return stats(args[1:])
+	case "monitor":
+		return monitor(args[1:])
 	case "list":
 		ds, err := winusb.Enumerate()
 		if err != nil {

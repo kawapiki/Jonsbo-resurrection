@@ -1,0 +1,10 @@
+{
+  "listen": "127.0.0.1:8787",
+  "token_file": "bin/api-token",
+  "frame_interval": "1s",
+  "modules": {
+    "hardware": { "enabled": true, "options": { "interval": "1s" } },
+    "example": { "enabled": true, "options": { "interval": "250ms" } }
+  },
+  "displays": {}
+}
