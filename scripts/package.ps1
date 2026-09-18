@@ -17,7 +17,7 @@ $archive = Join-Path $dist "$name.zip"
 if (Test-Path -LiteralPath $archive) { throw "Archive already exists: $archive" }
 $stage = Join-Path $dist ($name + '-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
-$files = @('bin/jonsbo.exe', 'bin/JonsboResurrection.exe', 'VERSION', 'LICENSE', 'README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'docs/api.md', 'docs/modules.md', 'docs/architecture.md', 'docs/hardware-monitoring.md', 'docs/releasing.md', 'docs/windows-app.md', 'configs/example.json', 'scripts/start-server.ps1', 'scripts/start-monitor.ps1', 'scripts/stop-monitor.ps1', 'third_party/go/LICENSE', 'third_party/pawnio/COPYING', 'third_party/pawnio/README.md', 'third_party/pawnio/PawnIO.Modules-0.2.11-source.zip')
+$files = @('bin/jonsbo.exe', 'bin/JonsboResurrection.exe', 'VERSION', 'LICENSE', 'README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'docs/api.md', 'docs/modules.md', 'docs/architecture.md', 'docs/hardware-monitoring.md', 'docs/releasing.md', 'docs/windows-app.md', 'docs/configurator.md', 'configs/example.json', 'scripts/start-server.ps1', 'scripts/start-monitor.ps1', 'scripts/stop-monitor.ps1', 'third_party/go/LICENSE', 'third_party/pawnio/COPYING', 'third_party/pawnio/README.md', 'third_party/pawnio/PawnIO.Modules-0.2.11-source.zip')
 foreach ($relative in $files) {
     $destination = if ($relative -eq 'bin/JonsboResurrection.exe') { 'JonsboResurrection.exe' } else { $relative }
     $target = Join-Path $stage $destination

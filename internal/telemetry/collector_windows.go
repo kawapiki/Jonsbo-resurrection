@@ -19,12 +19,13 @@ type Collector struct {
 	amdError   error
 	ryzen      *RyzenTemperature
 	ryzenError error
+	storage    *storageSampler
 }
 
 func New() *Collector {
 	a, e := NewAMD()
 	r, re := NewRyzenTemperature()
-	return &Collector{amd: a, amdError: e, ryzen: r, ryzenError: re}
+	return &Collector{amd: a, amdError: e, ryzen: r, ryzenError: re, storage: newStorageSampler()}
 }
 func (c *Collector) Close() {
 	if c.ryzen != nil {
@@ -35,7 +36,11 @@ func (c *Collector) Close() {
 	}
 }
 func (c *Collector) Sample() Snapshot {
-	s := Snapshot{Time: time.Now(), GPUs: []GPU{}}
+	s := Snapshot{Time: time.Now(), GPUs: []GPU{}, Disks: []Disk{}}
+	if c.storage == nil {
+		c.storage = newStorageSampler()
+	}
+	s.Disks, s.Warnings = c.storage.sample(s.Time)
 	var now Times
 	if ok, _, e := getTimes.Call(uintptr(unsafe.Pointer(&now.Idle)), uintptr(unsafe.Pointer(&now.Kernel)), uintptr(unsafe.Pointer(&now.User))); ok == 0 {
 		s.Warnings = append(s.Warnings, fmt.Sprintf("CPU usage: %v", e))

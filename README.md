@@ -12,7 +12,7 @@ This is an experimental, community-oriented project, independent of JONSBO. Hard
 - Example Go module with message events, a generated sparkline, and an animated progress bar; an external event-producer boilerplate.
 - Static PNG/JPEG upload, orientation correction, per-display workers, and reconnection attempts for selected serials.
 
-Claude/Codex account/task adapters, Windows notification capture, historical chart storage, video decoding/playback, a layout editor, and a module marketplace are **not implemented**. The extension interfaces and example are the starting point for that work.
+Claude/Codex account/task adapters, Windows notification capture, persistent historical chart storage, full-motion video playback, and a module marketplace are **not implemented**. The extension interfaces and example are the starting point for that work.
 
 ## Download for Windows
 
@@ -58,6 +58,8 @@ go run ./examples/event-producer -token-file bin/api-token -message 'Build compl
 ```
 
 ## Customize and extend
+
+The [local display configurator](docs/configurator.md) adds editable overlays, five preset themes, history/usage charts, storage free space, and saved image/video-frame backgrounds. Choose **Open configurator** in a build containing this feature. It is not included in the original v0.3.0 binary.
 
 Start with [configs/example.json](configs/example.json), then run:
 

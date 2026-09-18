@@ -53,6 +53,7 @@ type Options struct {
 	Tick                           func()
 	Start, Stop                    func() error
 	OpenLogs, OpenReleases         func() error
+	OpenConfigurator               func() error
 	StartupState                   func() (bool, bool, error)
 	ToggleStartup, ElevatedStartup func() error
 }
@@ -120,6 +121,9 @@ func Run(ctx context.Context, o Options) error {
 			user.NewProc("AppendMenuW").Call(menu, flags, id, uintptr(unsafe.Pointer(wide(label))))
 		}
 		appendItem(0, o.Status(), 2)
+		if o.OpenConfigurator != nil {
+			appendItem(8, "Open configurator", 0)
+		}
 		appendItem(1, "Start / retry displays", 0)
 		appendItem(2, "Stop displays and API", 0)
 		appendItem(3, "Open logs", 0)
@@ -149,6 +153,8 @@ func Run(ctx context.Context, o Options) error {
 		user.NewProc("PostMessageW").Call(hwnd, 0, 0, 0)
 		var action func() error
 		switch selected {
+		case 8:
+			action = o.OpenConfigurator
 		case 1:
 			action = o.Start
 		case 2:
