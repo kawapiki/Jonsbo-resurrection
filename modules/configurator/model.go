@@ -163,6 +163,9 @@ func Themes(width, height int) []Theme {
 			l.Overlays = append(l.Overlays, makeOverlay(id, typ, metric, label, x, y, w, h, font, c))
 		}
 		if height == 180 {
+			// Fan panels are natively portrait; the logical horizontal canvas
+			// needs the same clockwise rotation as the hardware dashboard.
+			l.Rotation = 90
 			switch i {
 			case 0:
 				add("title", "text", "", "ARCTIC / SYSTEM", 18, 10, 604, 24, 14, s.fg)

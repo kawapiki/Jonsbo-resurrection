@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import helpers from './app.js';
-const {constrainLayer, adaptLayout, coverRect, metricValue, mediaPlan, readToken} = helpers;
+const {constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken} = helpers;
 
 test('dragging and resizing never leave the device canvas', () => {
   assert.deepEqual(constrainLayer({x:-10,y:900,w:999,h:20},640,180),{x:0,y:160,w:640,h:20});
@@ -23,6 +23,23 @@ test('changing display format creates a fresh ID while same format retains ident
 test('backgrounds cover and center-crop like the physical display renderer',()=>{
   assert.deepEqual(coverRect(640,480,640,180),{x:0,y:-150,w:640,h:480});
   assert.deepEqual(coverRect(320,180,640,480),{x:-106.66666666666663,y:0,w:853.3333333333333,h:480});
+});
+test('virtual fan layouts default to physical 90-degree rotation, pump defaults to zero',()=>{
+  assert.equal(orientLayout({height:180,rotation:0}).rotation,90);
+  assert.equal(orientLayout({height:480,rotation:90}).rotation,0);
+});
+test('device or binding rotation takes precedence over saved layout and theme rotation',()=>{
+  const preset={height:180,rotation:90,overlays:[]};
+  for(const rotation of [0,90,180,270])assert.equal(orientLayout(preset,{rotation}).rotation,rotation);
+  const adjusted=orientLayout(preset,{rotation:270});
+  assert.equal(preset.rotation,90);assert.notEqual(adjusted,preset);
+  assert.equal(orientLayout(preset,{rotation:45}).rotation,90);
+});
+test('adapting to a device retains its assignment orientation and creates a separate format',()=>{
+  const original={id:'saved-pump',width:640,height:480,rotation:0,overlays:[]};
+  const fan=orientLayout(adaptLayout(original,180),{rotation:270});
+  assert.equal(fan.height,180);assert.equal(fan.rotation,270);assert.notEqual(fan.id,original.id);
+  assert.equal(original.rotation,0);assert.equal(original.height,480);
 });
 test('missing, nonfinite and null hardware readings remain unavailable, zero remains valid', () => {
   const metrics=[{id:'zero',value:0},{id:'null',value:null},{id:'bad',value:NaN},{id:'infinite',value:Infinity}];

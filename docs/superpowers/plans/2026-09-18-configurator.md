@@ -25,6 +25,7 @@ Serve embedded /, /app.js,/style.css,/signature.png publicly afterloopbackHost/O
 - [x] Embedded web editor,devicepicker,themes,drag/resizeoverlaypropertypanel,image/videoimport,preview/apply,empty/error/accessibility states.
 - [x] Fixed-volume storage telemetry and null/error/unit tests.
 - [x] API/static/auth glue, runtime/displayfacade,savedbindingrestore,trayOpenconfigurator,docs.
-- [ ] Tests,v et/build,browserflow andnativepreviewverification,independentreview,featurePRwithCI;noautomaticmerge.
+- [x] Go tests/vet/build, browser flows, exact render review, independent code review and feature PR.
+- [ ] Required CI on final revision and physical USB application check. Elevation was canceled; the installed v0.3.0 controller remains active.
 
 Ruling: use a localwebsite forlayoutcompositionandnativebrowsermediadecode. Hardwareupdates remain500msminimum; videoisexplicitlyresampled2fpsmax60sec, notfull-motionUSB. Browsermaycloseafterimport. Userexplicitlyauthorizesimplementation, so no repeateddesignapprovalgate. Subagent-driven-development skill directsboundedparallel implementation. Existinginstalled0.3.0 staysavailable untiltestedlocalpreviewreplacement.

@@ -234,6 +234,20 @@ func TestAssetsDecodeBoundsLoopAndRestart(t *testing.T) {
 		t.Fatal("referenced asset deleted", w.Code)
 	}
 }
+func TestThemeRotationMatchesNativePanel(t *testing.T) {
+	for _, height := range []int{180, 480} {
+		want := 0
+		if height == 180 {
+			want = 90
+		}
+		for _, theme := range Themes(640, height) {
+			if theme.Layout.Rotation != want {
+				t.Fatalf("%s height %d rotation = %d, want %d", theme.ID, height, theme.Layout.Rotation, want)
+			}
+		}
+	}
+}
+
 func TestApplyFailureAndBindingRestart(t *testing.T) {
 	m := fresh(t)
 	d := &fakeDisplays{err: errors.New("offline")}

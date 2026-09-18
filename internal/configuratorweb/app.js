@@ -24,6 +24,11 @@ function coverRect(sourceWidth, sourceHeight, width, height) {
   const w = sourceWidth * scale, h = sourceHeight * scale;
   return {x: (width - w) / 2, y: (height - h) / 2, w, h};
 }
+function orientLayout(layout, assignment) {
+  const next = clone(layout);
+  next.rotation = [0, 90, 180, 270].includes(assignment?.rotation) ? assignment.rotation : layout.height === 180 ? 90 : 0;
+  return next;
+}
 function metricValue(metrics, id) {
   const metric = metrics.find(item => item.id === id);
   return metric && typeof metric.value === "number" && Number.isFinite(metric.value) ? metric.value : null;
@@ -42,7 +47,7 @@ function readToken(location, history, storage) {
   if (incoming) { try { storage.setItem("jonsbo-token", incoming); } catch (_) {} return incoming; }
   try { return storage.getItem("jonsbo-token") || ""; } catch (_) { return ""; }
 }
-if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, metricValue, mediaPlan, readToken};
+if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken};
 
 function startStudio() {
   const $ = id => document.getElementById(id);
@@ -51,7 +56,8 @@ function startStudio() {
   const state = {layouts: [], themes: [], themeCache: {}, themeHeight: 0, themeRequestHeight: 0, assets: [], metrics: [], history: [], devices: [], bindings: {}, draft: null, selected: "", serial: "", height: 480, dirty: false, revision: 0, connected: false, initialized: false, pollTimer: null, polling: false, previewing: false, importing: null, background: null, backgroundID: "", backgroundPending: "", renderURL: "", epoch: 0};
   const canvas = $("canvas"), ctx = canvas.getContext("2d");
   const id = prefix => prefix + "-" + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 20);
-  const blank = height => ({id:id("layout"), name:height === 180 ? "My fan display" : "My pump display", width:640, height, background:{color:"#121a26", asset_id:"", opacity:1}, overlays:[], rotation:0});
+  const currentAssignment = () => state.bindings[state.serial] || state.devices.find(device => device.serial === state.serial)?.assignment;
+  const blank = height => orientLayout({id:id("layout"), name:height === 180 ? "My fan display" : "My pump display", width:640, height, background:{color:"#121a26", asset_id:"", opacity:1}, overlays:[], rotation:0}, currentAssignment());
   const selected = () => state.draft?.overlays.find(layer => layer.id === state.selected);
   const status = (message, error = false) => { $("status").textContent = message; $("status").classList.toggle("error", error); };
   function connected(yes) {
@@ -117,8 +123,9 @@ function startStudio() {
     const height = device.kind==="fan" ? 180 : 480;
     const binding = state.bindings[device.serial] || device.assignment;
     const bound = state.layouts.find(layout=>layout.id===binding?.view);
-    if (!state.dirty && bound) setDraft(bound);
-    else if (state.height!==height) setDraft(adaptLayout(state.draft, height), true);
+    if (!state.dirty && bound) setDraft(orientLayout(bound, binding));
+    else if (state.height!==height) setDraft(orientLayout(adaptLayout(state.draft, height), binding), true);
+    else if (state.draft.rotation!==orientLayout(state.draft,binding).rotation) setDraft(orientLayout(state.draft,binding),true);
     renderDevices(); renderThemes(); status("Selected " + device.serial + ". Save and apply when your layout is ready.");
   }
   function renderSaved() {
@@ -142,7 +149,7 @@ function startStudio() {
       const button=element("button","theme"), thumbnail=element("canvas"); thumbnail.width=640; thumbnail.height=state.height; thumbnail.setAttribute("aria-hidden","true");
       const layout=adaptLayout(theme.layout,state.height); paint(thumbnail.getContext("2d"), layout, false);
       button.append(thumbnail,element("strong","",theme.name),element("small","",theme.description));
-      button.addEventListener("click",()=>{if(!allowReplace())return;layout.id=id("layout");layout.name=theme.name+" custom";setDraft(layout,true);status("Theme loaded. Select any layer to change its reading, position or style.");}); list.append(button);
+      button.addEventListener("click",()=>{if(!allowReplace())return;layout.id=id("layout");layout.name=theme.name+" custom";setDraft(orientLayout(layout,{rotation:state.draft.rotation}),true);status("Theme loaded. Select any layer to change its reading, position or style.");}); list.append(button);
     }
   }
   function renderAssets() {
@@ -236,7 +243,7 @@ function startStudio() {
         state.initialized=true;renderSaved();const first=state.devices[0];if(first){state.serial=first.serial;state.height=first.kind==="fan"?180:480;}
         const assignment=first&&(state.bindings[first.serial]||first.assignment),existing=state.layouts.find(layout=>layout.id===assignment?.view);
         const defaultLayout=state.layouts.find(layout=>layout.id===(state.height===180?"default-fan":"default-pump"));
-        if(!state.dirty) setDraft(existing || (defaultLayout ? {...clone(defaultLayout),id:id("layout"),name:"My display"} : state.themes[0] ? {...adaptLayout(state.themes[0].layout,state.height),id:id("layout"),name:"My display"}:blank(state.height)),false);
+        if(!state.dirty) setDraft(orientLayout(existing || (defaultLayout ? {...clone(defaultLayout),id:id("layout"),name:"My display"} : state.themes[0] ? {...adaptLayout(state.themes[0].layout,state.height),id:id("layout"),name:"My display"}:blank(state.height)),assignment),false);
         renderThemes();status(first?"Select a layer, choose a theme or import your own background.":"No displays connected. You can still create, save and preview layouts.");
       }
       if(state.serial&&!state.devices.some(device=>device.serial===state.serial)){state.serial="";status("Display disconnected. Your layout is still here; reconnect the display to apply it.",true);}
@@ -267,8 +274,8 @@ function startStudio() {
   $("auth-toggle").addEventListener("click",()=>{$("auth").hidden=!$("auth").hidden;if(!$("auth").hidden)$("token").focus();});
   $("auth-form").addEventListener("submit",event=>{event.preventDefault();token=$("token").value.trim();if(!token)return;state.epoch++;try{tokenStorage.setItem("jonsbo-token",token);}catch(_){}$("token").value="";state.initialized=false;poll();});
   $("forget-token").addEventListener("click",()=>{token="";state.epoch++;try{tokenStorage.removeItem("jonsbo-token");}catch(_){}clearTimeout(state.pollTimer);connected(false);status("Token forgotten in this tab. Paste a token to reconnect.");});
-  document.querySelectorAll("[data-height]").forEach(button=>button.addEventListener("click",()=>{const height=Number(button.dataset.height);state.serial="";if(height!==state.height)setDraft(adaptLayout(state.draft,height),true);renderDevices();renderThemes();status("Virtual "+(height===180?"fan":"pump")+" preview. Select a connected display to apply.");}));
-  $("saved-layout").addEventListener("change",event=>{const chosen=state.layouts.find(layout=>layout.id===event.target.value);if(!chosen)return;if(!allowReplace()){event.target.value=state.draft.id;return;}setDraft(chosen);const device=state.devices.find(item=>item.serial===state.serial);if(device&&(device.kind==="fan"?180:480)!==chosen.height)state.serial="";renderDevices();renderThemes();});
+  document.querySelectorAll("[data-height]").forEach(button=>button.addEventListener("click",()=>{const height=Number(button.dataset.height);state.serial="";if(height!==state.height||state.draft.rotation!==(height===180?90:0))setDraft(orientLayout(adaptLayout(state.draft,height)),true);renderDevices();renderThemes();status("Virtual "+(height===180?"fan":"pump")+" preview. Select a connected display to apply.");}));
+  $("saved-layout").addEventListener("change",event=>{const chosen=state.layouts.find(layout=>layout.id===event.target.value);if(!chosen)return;if(!allowReplace()){event.target.value=state.draft.id;return;}const device=state.devices.find(item=>item.serial===state.serial);if(device&&(device.kind==="fan"?180:480)!==chosen.height)state.serial="";setDraft(state.serial?orientLayout(chosen,currentAssignment()):chosen);renderDevices();renderThemes();});
   $("new-layout").addEventListener("click",()=>{if(allowReplace())setDraft(blank(state.height),true);});
   $("layout-name").addEventListener("input",event=>{state.draft.name=event.target.value;changed();});
   $("rotation").addEventListener("change",event=>{state.draft.rotation=Number(event.target.value);changed();});
