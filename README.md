@@ -4,6 +4,24 @@ A modular Go controller for the four screens on a **JONSBO TF3-360SC**, starting
 
 This is an experimental, community-oriented project, independent of JONSBO. Hardware support has been verified on one TF3-360SC installation. It changes display content, not cooling settings or firmware.
 
+## Screenshots
+
+Captured from the Windows **0.4.0-dev** configurator with a connected TF3-360SC and live hardware readings. This interface is not included in the original v0.3.0 release.
+
+**Your displays** — see all four screens, their current output and connection status, alongside CPU/GPU temperatures, memory usage and free disk space. Select a screen to edit it.
+
+![Connected-display overview with four live screens and hardware readings](docs/screenshots/display-overview.png)
+
+**Layout editor** — start with a theme, select an overlay, and adjust its sensor reading, appearance and position. The selected display remains visible above the canvas.
+
+![Pump layout editor showing theme previews, a CPU history chart and the selected overlay properties](docs/screenshots/layout-editor.png)
+
+**Fan layouts** — the same editor adapts to the wide fan screens, with a widget library for readings, history charts, gauges, text and storage space.
+
+![Fan layout editor with the widget library and CPU history chart settings](docs/screenshots/fan-editor.png)
+
+See the [configurator guide](docs/configurator.md) for themes, widgets, backgrounds and saving layouts.
+
 ## What works
 
 - Hardware module: CPU usage and Ryzen temperature, system RAM, AMD GPU usage/temperature/power/clocks/fan speed, and dedicated VRAM used/total.
@@ -19,6 +37,8 @@ Claude/Codex account/task adapters, Windows notification capture, persistent his
 Get the [latest versioned release](https://github.com/kawapiki/Jonsbo-resurrection/releases/latest), extract the complete ZIP, and run **JonsboResurrection.exe**. The signature icon appears in the Windows tray. Right-click it to start/stop monitoring, open logs, or enable launch at sign-in. No Go installation is needed.
 
 See the [Windows app guide](docs/windows-app.md) for startup, optional elevated CPU temperature support, updates and troubleshooting. Public binaries are currently unsigned.
+
+Merging a PR runs CI but does not publish a new download. Releases are built and published automatically when the maintainer pushes a `v<version>` tag matching `VERSION`; versions such as `0.4.0-dev` are prereleases. See the [release procedure](docs/releasing.md).
 
 ## Build from source
 
