@@ -52,7 +52,15 @@ async function saveThenApply(save, isCurrent, apply) {
   if (!isCurrent()) throw new Error("The layout or selected display changed while saving. Review it and apply again.");
   await apply();
 }
-if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken, saveThenApply};
+function layoutForDisplay(device, layouts, bindings, newID) {
+  const assignment=device.assignment || bindings[device.serial];
+  const bound=assignment?.module==='configurator' && layouts.find(l=>l.id===assignment.view);
+  if(bound)return orientLayout(bound,assignment);
+  const base=layouts.find(l=>l.id===(device.kind==='fan'?'default-fan':'default-pump'));
+  if(!base)throw new Error('Default layout unavailable. Reconnect to the service.');
+  return orientLayout({...clone(base),id:newID,name:(device.kind==='fan'?'Fan':'Pump')+' '+device.serial.slice(-4)+' custom'},assignment);
+}
+if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken, saveThenApply, layoutForDisplay};
 
 function startStudio() {
   const $ = id => document.getElementById(id);
@@ -64,10 +72,17 @@ function startStudio() {
   function fitCanvas(){frame.style.width=Math.max(40,Math.min(656,well.clientWidth-32,(well.clientHeight-32)*canvas.width/canvas.height))+'px';}
   new ResizeObserver(fitCanvas).observe(well);
   const id = prefix => prefix + "-" + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 20);
-  const currentAssignment = () => state.bindings[state.serial] || state.devices.find(device => device.serial === state.serial)?.assignment;
+  const currentAssignment = () => state.devices.find(device => device.serial === state.serial)?.assignment || state.bindings[state.serial];
   const blank = height => orientLayout({id:id("layout"), name:height === 180 ? "My fan display" : "My pump display", width:640, height, background:{color:"#121a26", asset_id:"", opacity:1}, overlays:[], rotation:0}, currentAssignment());
   const selected = () => state.draft?.overlays.find(layer => layer.id === state.selected);
   let applying = false;
+  let page='home', deviceSignature='', previewBusy=false;
+  const deviceImages=new Map();
+  function displayName(device){return (device.kind==='fan'?'Fan':'Pump')+' · '+device.serial.slice(-6);}
+  function showPage(next){page=next;document.body.dataset.page=next;requestAnimationFrame(fitCanvas);updateActions();}
+  $('back-displays').addEventListener('click',()=>{showPage('home');renderDevices();refreshDisplayPreviews();});
+  $('resume-design').addEventListener('click',()=>{showPage('editor');renderDevices();});
+  $('design-offline').addEventListener('click',()=>{if(!state.serial&&state.dirty){showPage('editor');return;}if(!allowReplace())return;state.serial='';setDraft(blank(480));showPage('editor');renderDevices();});
   function showLibrary(name) {
     document.querySelectorAll('[data-library]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.library===name)));
     document.querySelectorAll('[data-library-panel]').forEach(panel=>panel.hidden=panel.dataset.libraryPanel!==name);
@@ -107,9 +122,10 @@ function startStudio() {
     $("apply-button").disabled = applying || !state.connected || !device || !state.draft;
     $("apply-button").textContent = applying ? "Applying…" : "Save & apply";
     $("apply-button").title = !device ? "Select a connected display first" : "Save and send this layout to " + device.serial;
-    $("save-button").disabled = applying || !state.connected || !state.draft;
+    $("save-button").disabled = page!=='editor' || applying || !state.connected || !state.draft;
     $("preview-button").disabled = !state.connected || !state.draft || state.previewing;
     $("draft-state").textContent = state.dirty ? "Unsaved changes" : state.layouts.some(item => item.id === state.draft?.id) ? "Saved" : "New layout";
+    $('resume-design').hidden=!state.dirty;
   }
   function changed() { state.dirty = true; state.revision++; $("render-state").textContent = "Draft changed"; updateActions(); draw(); }
   function allowReplace() { return !state.dirty || window.confirm("Discard the unsaved changes in this layout?"); }
@@ -130,23 +146,55 @@ function startStudio() {
   function renderDevices() {
     const list = $("devices"); list.replaceChildren(); $("device-count").textContent = state.devices.length;
     $("device-note").textContent = state.serial ? "Editing " + (state.devices.find(d=>d.serial===state.serial)?.kind || "display") + " · " + state.serial : "Preview workspace. Choose a connected display above to send your design.";
+    const selectedDevice=state.devices.find(d=>d.serial===state.serial);
+    $('selected-display').textContent=selectedDevice?displayName(selectedDevice)+' — '+selectedDevice.serial:'Offline layout preview';
+    $('overview-count').textContent=state.connected?state.devices.length+' detected · '+state.devices.filter(d=>d.status==='live').length+' live':'Display service disconnected';
+    $('overview-empty').hidden=state.connected&&state.devices.length>0;
+    $('overview-empty').textContent=!state.connected?'Connect to the local display service to detect screens and read hardware values.':'No displays are exposed by this service. Start the Windows app with display monitoring enabled, then reconnect. Offline layout design is available below.';
+    const signature=JSON.stringify(state.devices.map(d=>[d.serial,d.kind,d.assignment,d.status,d.error,state.connected]));
+    if(signature!==deviceSignature){
+      deviceSignature=signature;
+      const cards=$('display-cards');cards.replaceChildren();
+      const sorted=[...state.devices].sort((a,b)=>(a.kind==='pump'?-1:1)-(b.kind==='pump'?-1:1)||a.serial.localeCompare(b.serial));
+      for(const device of sorted){
+        const card=element('button','display-card');card.disabled=!state.connected;
+        card.setAttribute('aria-label','Edit '+displayName(device));
+        const screen=element('div','display-card-screen '+device.kind),img=element('img');img.alt='Current layout on '+displayName(device);img.dataset.displaySerial=device.serial;
+        if(deviceImages.has(device.serial))img.src=deviceImages.get(device.serial);else img.hidden=true;
+        screen.append(img,element('span','preview-label','Current display output'));
+        card.append(screen,element('strong','',displayName(device)),element('span','card-serial',device.serial),element('span','card-status',state.connected?(device.error || device.status || 'Detected'):'Service disconnected'),element('span','card-assignment','Showing '+(device.assignment?.module || 'unassigned')+' / '+(device.assignment?.view || 'none')),element('span','card-edit','Edit display'));
+        card.addEventListener('click',()=>selectDevice(device));cards.append(card);
+      }
+      for(const [serial,url] of deviceImages){if(!state.devices.some(d=>d.serial===serial)){URL.revokeObjectURL(url);deviceImages.delete(serial);}}
+    }
     for (const device of state.devices) {
       const button=element("button", "device" + (state.serial===device.serial?" active":""));
       const icon=element("span", "screen-icon " + (device.kind==="fan"?"fan":"pump"));
-      const info=element("span"); info.append(element("strong", "", device.kind==="fan"?"Fan display":"Pump display"),element("small", "", device.serial),element("small", "", device.status || "Connected")); button.append(icon, info);
+      const info=element("span"); info.append(element("strong", "", displayName(device)),element("small", "", device.serial),element("small", "", device.status || "Connected")); button.append(icon, info);
+      button.setAttribute('aria-pressed',String(state.serial===device.serial));
       button.addEventListener("click",()=>selectDevice(device)); list.append(button);
     }
     updateActions();
   }
   function selectDevice(device) {
+    if(state.serial===device.serial&&state.draft){showPage('editor');renderDevices();return;}
+    if(!allowReplace())return;
+    const layout=layoutForDisplay(device,state.layouts,state.bindings,id('layout'));
     state.serial = device.serial;
-    const height = device.kind==="fan" ? 180 : 480;
-    const binding = state.bindings[device.serial] || device.assignment;
-    const bound = state.layouts.find(layout=>layout.id===binding?.view);
-    if (!state.dirty && bound) setDraft(orientLayout(bound, binding));
-    else if (state.height!==height) setDraft(orientLayout(adaptLayout(state.draft, height), binding), true);
-    else if (state.draft.rotation!==orientLayout(state.draft,binding).rotation) setDraft(orientLayout(state.draft,binding),true);
-    renderDevices(); renderThemes(); status("Selected " + device.serial + ". Save and apply when your layout is ready.");
+    setDraft(layout);showPage('editor');
+    renderDevices(); renderThemes(); status(device.assignment?.module==='configurator'?'Editing the saved layout for '+displayName(device)+'.':'Currently showing the '+(device.assignment?.module || 'default')+' dashboard. Customize this draft, then Save & apply to replace it on '+displayName(device)+'.');
+  }
+  async function refreshDisplayPreviews(){
+    if(previewBusy||page!=='home'||!state.connected)return;previewBusy=true;const epoch=state.epoch;
+    try{for(const device of state.devices){
+      if(page!=='home'||epoch!==state.epoch)break;
+      const a=device.assignment;if(!a?.module||!a?.view)continue;
+      try{const blob=await request('/v1/modules/'+encodeURIComponent(a.module)+'/views/'+encodeURIComponent(a.view)+'.png',{blob:true});
+        if(epoch!==state.epoch||!state.connected)break;
+        const img=[...document.querySelectorAll('[data-display-serial]')].find(el=>el.dataset.displaySerial===device.serial);
+        if(img){const url=URL.createObjectURL(blob),old=deviceImages.get(device.serial);deviceImages.set(device.serial,url);img.src=url;img.hidden=false;if(old)URL.revokeObjectURL(old);}
+      }catch(_){/* Keep device status visible even if its current renderer is unavailable. */}
+    }}finally{previewBusy=false;}
   }
   function renderSaved() {
     const select=$("saved-layout"); select.replaceChildren(new Option("Choose a layout…", ""));
@@ -197,6 +245,8 @@ function startStudio() {
       item.append(element("small","",metric.label),element("strong","",value===null?"—":Number(value.toFixed(1)).toString()),element("span","",metric.unit));list.append(item);
     }
     $("reading-time").textContent=state.metrics.some(item=>metricValue(state.metrics,item.id)!==null)?"Updated "+new Date().toLocaleTimeString():"Sensors unavailable";
+    $('overview-metrics').replaceChildren(...[...list.children].map(node=>node.cloneNode(true)));
+    $('overview-reading-time').textContent=$('reading-time').textContent;
     const select=$("prop-metric"), previous=select.value; select.replaceChildren(); state.metrics.forEach(metric=>select.add(new Option(metric.label+" ("+metric.unit+")",metric.id))); select.value=selected()?.metric || previous;
   }
   function renderLayers() {
@@ -264,16 +314,14 @@ function startStudio() {
       state.assets=data.assets||[];state.metrics=data.metrics||[];state.history=data.history||[];state.bindings=data.bindings||{};state.devices=devices||[];
       connected(true);$("auth").hidden=true;
       if(!state.initialized) {
-        state.initialized=true;renderSaved();const first=state.devices[0];if(first){state.serial=first.serial;state.height=first.kind==="fan"?180:480;}
-        const assignment=first&&(state.bindings[first.serial]||first.assignment),existing=state.layouts.find(layout=>layout.id===assignment?.view);
-        const defaultLayout=state.layouts.find(layout=>layout.id===(state.height===180?"default-fan":"default-pump"));
-        if(!state.dirty) setDraft(orientLayout(existing || (defaultLayout ? {...clone(defaultLayout),id:id("layout"),name:"My display"} : state.themes[0] ? {...adaptLayout(state.themes[0].layout,state.height),id:id("layout"),name:"My display"}:blank(state.height)),assignment),false);
-        renderThemes();status(first?"Select a layer, choose a theme or import your own background.":"No displays connected. You can still create, save and preview layouts.");
+        state.initialized=true;renderSaved();showPage('home');
+        status(state.devices.length?'Choose a display to edit its layout.':'No displays detected by this service. Check that display monitoring is running.');
       }
       if(state.serial&&!state.devices.some(device=>device.serial===state.serial)){state.serial="";status("Display disconnected. Your layout is still here; reconnect the display to apply it.",true);}
       renderDevices();renderSaved();renderAssets();renderMetrics();draw();
+      if(page==='home')await refreshDisplayPreviews();
       if($("render-panel").open&&!state.dirty)await renderPreview(true);
-    } catch(error) {if(epoch===state.epoch){connected(false);status(error.message || "Could not reach the local service. Keep it running and try again.",true);}}
+    } catch(error) {if(epoch===state.epoch){connected(false);state.metrics=state.metrics.map(m=>({...m,value:null}));renderMetrics();renderDevices();status(error.message || "Could not reach the local service. Keep it running and try again.",true);}}
     finally {state.polling=false;if(token)state.pollTimer=setTimeout(poll,state.connected?2000:5000);}
   }
   async function renderPreview(quiet=false) {
@@ -297,7 +345,7 @@ function startStudio() {
   }
   $("auth-toggle").addEventListener("click",()=>{$("auth").hidden=!$("auth").hidden;if(!$("auth").hidden)$("token").focus();});
   $("auth-form").addEventListener("submit",event=>{event.preventDefault();token=$("token").value.trim();if(!token)return;state.epoch++;try{tokenStorage.setItem("jonsbo-token",token);}catch(_){}$("token").value="";state.initialized=false;poll();});
-  $("forget-token").addEventListener("click",()=>{token="";state.epoch++;try{tokenStorage.removeItem("jonsbo-token");}catch(_){}clearTimeout(state.pollTimer);connected(false);status("Token forgotten in this tab. Paste a token to reconnect.");});
+  $("forget-token").addEventListener("click",()=>{token="";state.epoch++;try{tokenStorage.removeItem("jonsbo-token");}catch(_){}clearTimeout(state.pollTimer);connected(false);state.metrics=state.metrics.map(m=>({...m,value:null}));renderMetrics();renderDevices();status("Token forgotten in this tab. Paste a token to reconnect.");});
   document.querySelectorAll("[data-height]").forEach(button=>button.addEventListener("click",()=>{const height=Number(button.dataset.height);state.serial="";if(height!==state.height||state.draft.rotation!==(height===180?90:0))setDraft(orientLayout(adaptLayout(state.draft,height)),true);renderDevices();renderThemes();status("Virtual "+(height===180?"fan":"pump")+" preview. Select a connected display to apply.");}));
   $("saved-layout").addEventListener("change",event=>{const chosen=state.layouts.find(layout=>layout.id===event.target.value);if(!chosen)return;if(!allowReplace()){event.target.value=state.draft.id;return;}const device=state.devices.find(item=>item.serial===state.serial);if(device&&(device.kind==="fan"?180:480)!==chosen.height)state.serial="";setDraft(state.serial?orientLayout(chosen,currentAssignment()):chosen);renderDevices();renderThemes();});
   $("new-layout").addEventListener("click",()=>{if(allowReplace())setDraft(blank(state.height),true);});
@@ -377,6 +425,6 @@ function startStudio() {
   $("media-file").addEventListener("change",event=>importMedia(event.target.files[0]));$("cancel-import").addEventListener("click",()=>state.importing?.abort());
   window.addEventListener("beforeunload",event=>{if(state.dirty||state.importing){event.preventDefault();event.returnValue="";}});
   window.addEventListener("pagehide",()=>{state.importing?.abort();if(state.renderURL)URL.revokeObjectURL(state.renderURL);});
-  setDraft(blank(480));renderDevices();if(token)poll();else{$("auth").hidden=false;connected(false);status("Open Display studio from the tray, or enter your local API token to connect.");}
+  setDraft(blank(480));showPage('home');renderDevices();if(token)poll();else{$("auth").hidden=false;connected(false);status("Open Display studio from the tray, or enter your local API token to connect.");}
 }
 if(typeof document!=="undefined")startStudio();

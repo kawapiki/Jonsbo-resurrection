@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Jonsbo Display Studio</title><link rel="icon" href="/signature.png"><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script></head>
-<body>
+<body data-page="home">
 <header class="topbar">
   <a class="brand" href="/" aria-label="Jonsbo Display studio"><img src="/signature.png" alt="" width="36" height="36"><span><strong>Jonsbo</strong><small>Display Studio</small></span></a>
   <div class="connection"><span id="connection-dot" class="dot"></span><span id="connection">Connecting</span></div>
@@ -9,11 +9,18 @@
   <div class="header-actions"><button id="save-button" class="quiet">Save layout</button><button id="apply-button" class="primary" disabled>Save &amp; apply</button></div>
 </header>
 <section id="auth" class="auth" hidden><form id="auth-form"><div><h2>Connect to your display service</h2><p>Open from the tray to connect automatically, or enter your local API token.</p></div><label>API token<input id="token" type="password" autocomplete="off" required></label><button class="primary" type="submit">Connect</button><button id="forget-token" type="button" class="quiet">Forget token</button></form></section>
-<section class="devicebar" aria-label="Display selection">
-  <div class="device-label"><strong>Your displays</strong><span id="device-count" class="count">0</span></div><div id="devices"></div>
+<section id="editor-devices" class="devicebar" aria-label="Display selection">
+  <button id="back-displays" class="quiet">Back to displays</button><div class="device-label"><strong>Your displays</strong><span id="device-count" class="count">0</span></div><div id="devices"></div>
   <div class="formats" aria-label="Preview format"><span>Preview</span><button data-height="480" class="format active">Pump <small>640 × 480</small></button><button data-height="180" class="format">Fan <small>640 × 180</small></button></div>
 </section>
-<main class="studio">
+<main id="display-overview" class="display-overview">
+  <div class="overview-heading"><div><h1>Your displays</h1><p>Select a connected screen to customize what it shows.</p></div><button id="resume-design" class="quiet" hidden>Resume unsaved design</button><span id="overview-count" class="overview-count">Connecting to display service…</span></div>
+  <p id="overview-empty" class="overview-empty">Connecting to display service…</p>
+  <div id="display-cards" class="display-cards"></div>
+  <section class="overview-hardware"><div class="overview-section-heading"><h2>Live hardware readings</h2><span id="overview-reading-time">Waiting for sensors</span></div><div id="overview-metrics" class="metrics"></div></section>
+  <div class="offline-action"><p>Prepare a layout without changing any display.</p><button id="design-offline" class="quiet">Design without a display</button></div>
+</main>
+<main id="editor" class="studio">
   <aside class="library panel">
     <nav class="library-nav" aria-label="Design library"><button data-library="themes" aria-pressed="true">Themes</button><button data-library="widgets" aria-pressed="false">Widgets</button><button data-library="background" aria-pressed="false">Background</button></nav>
     <section data-library-panel="themes"><div class="panel-intro"><h2>Choose a starting point</h2><p>Five looks. Every element is yours to change.</p></div><div id="themes" class="themes"></div></section>
@@ -37,7 +44,7 @@
   </aside>
   <section class="workspace" aria-label="Display canvas">
     <div class="canvas-toolbar"><div><label class="sr-only" for="layout-name">Layout name</label><input id="layout-name" maxlength="80" value="My display" aria-label="Layout name"><span id="draft-state" class="draft-badge">New layout</span></div><button id="duplicate-layout" class="quiet">Duplicate</button></div>
-    <p id="device-note" class="preview-notice">Select a display or explore a preview.</p>
+    <h1 id="selected-display" class="selected-display">Select a display</h1><p id="device-note" class="preview-notice">Select a display or explore a preview.</p>
     <div class="canvas-well"><div class="canvas-frame"><canvas id="canvas" width="640" height="480" tabindex="0" aria-label="Layout canvas. Select layers below; use arrow keys to move, Shift plus arrows for ten pixels."></canvas></div></div>
     <div class="canvas-footer"><span id="selection-note">Select a widget to edit it.</span><span id="canvas-size">640 × 480 px</span></div>
     <div class="canvas-actions"><label class="rotation">Orientation<select id="rotation"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label><button id="preview-button" class="quiet">Preview</button></div>

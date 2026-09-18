@@ -73,3 +73,15 @@ test('save and apply never applies a failed or superseded save', async()=>{
   await helpers.saveThenApply(async()=>{order.push('saved');},()=>true,async()=>{order.push('applied');});
   assert.deepEqual(order,['saved','applied']);
 });
+
+test('selecting a display loads only its bound layout, not another display draft',()=>{
+  const defaults=[{id:'default-fan',height:180,overlays:[],rotation:90},{id:'default-pump',height:480,overlays:[],rotation:0}];
+  const bound={id:'saved-fan',height:180,overlays:[],rotation:0};
+  const a={serial:'fan-a',kind:'fan',assignment:{module:'configurator',view:'saved-fan',rotation:270}};
+  const result=helpers.layoutForDisplay(a,[...defaults,bound],{},'new-a');
+  assert.equal(result.id,'saved-fan');assert.equal(result.rotation,270);assert.equal(bound.rotation,0);
+  const b={serial:'fan-b',kind:'fan',assignment:{module:'hardware',view:'saved-fan',rotation:90}};
+  const fresh=helpers.layoutForDisplay(b,[...defaults,bound],{},'new-b');
+  assert.equal(fresh.id,'new-b');assert.equal(fresh.rotation,90);assert.equal(fresh.height,180);
+  assert.equal(helpers.layoutForDisplay({...a,assignment:{...a.assignment,view:'missing'}},defaults,{},'new-c').id,'new-c');
+});

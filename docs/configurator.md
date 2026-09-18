@@ -6,7 +6,7 @@ For source builds run `bin/jonsbo.exe serve --all`. Open `http://127.0.0.1:8787/
 
 ## Compose a screen
 
-1. Select a connected pump or fan. Without connected hardware, use a virtual pump/fan canvas for previews.
+1. Start on **Your displays**: each detected screen has a card with its current layout, serial number and output status. Live hardware readings appear below. Choose a card to open that display in the editor. **Back to displays** returns to the overview; unsaved work can be resumed. **Design without a display** is an explicit offline option.
 2. Open **Themes** to choose one of five presets, or expand **Saved layouts**. Pump canvases are 640×480; horizontal fan canvases are 640×180. Rotation handles physical mounting separately.
 3. Open **Widgets** to add a live value, history graph, usage ring, usage bar, or text. Move and resize overlays on the canvas or enter precise coordinates in their properties. Edit labels, colors, font size, opacity and chart range; reorder or remove layers.
 4. Open **Background** to choose a color or import a picture/video. Preview renders the current draft without applying it to a physical display.
