@@ -47,7 +47,12 @@ function readToken(location, history, storage) {
   if (incoming) { try { storage.setItem("jonsbo-token", incoming); } catch (_) {} return incoming; }
   try { return storage.getItem("jonsbo-token") || ""; } catch (_) { return ""; }
 }
-if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken};
+async function saveThenApply(save, isCurrent, apply) {
+  await save();
+  if (!isCurrent()) throw new Error("The layout or selected display changed while saving. Review it and apply again.");
+  await apply();
+}
+if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken, saveThenApply};
 
 function startStudio() {
   const $ = id => document.getElementById(id);
@@ -55,10 +60,22 @@ function startStudio() {
   let token = readToken(location, history, tokenStorage);
   const state = {layouts: [], themes: [], themeCache: {}, themeHeight: 0, themeRequestHeight: 0, assets: [], metrics: [], history: [], devices: [], bindings: {}, draft: null, selected: "", serial: "", height: 480, dirty: false, revision: 0, connected: false, initialized: false, pollTimer: null, polling: false, previewing: false, importing: null, background: null, backgroundID: "", backgroundPending: "", renderURL: "", epoch: 0};
   const canvas = $("canvas"), ctx = canvas.getContext("2d");
+  const well=document.querySelector('.canvas-well'), frame=document.querySelector('.canvas-frame');
+  function fitCanvas(){frame.style.width=Math.max(40,Math.min(656,well.clientWidth-32,(well.clientHeight-32)*canvas.width/canvas.height))+'px';}
+  new ResizeObserver(fitCanvas).observe(well);
   const id = prefix => prefix + "-" + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 20);
   const currentAssignment = () => state.bindings[state.serial] || state.devices.find(device => device.serial === state.serial)?.assignment;
   const blank = height => orientLayout({id:id("layout"), name:height === 180 ? "My fan display" : "My pump display", width:640, height, background:{color:"#121a26", asset_id:"", opacity:1}, overlays:[], rotation:0}, currentAssignment());
   const selected = () => state.draft?.overlays.find(layer => layer.id === state.selected);
+  let applying = false;
+  function showLibrary(name) {
+    document.querySelectorAll('[data-library]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.library===name)));
+    document.querySelectorAll('[data-library-panel]').forEach(panel=>panel.hidden=panel.dataset.libraryPanel!==name);
+  }
+  document.querySelectorAll('[data-library]').forEach(button=>button.addEventListener('click',()=>showLibrary(button.dataset.library)));
+  document.querySelectorAll('[data-widget]').forEach(button=>button.addEventListener('click',()=>{$('add-type').value=button.dataset.widget;$('add-layer').click();}));
+  $('browse-widgets').addEventListener('click',()=>showLibrary('widgets'));
+  $('duplicate-layout').addEventListener('click',()=>{const copy=clone(state.draft);copy.id=id('layout');copy.name+=' copy';setDraft(copy,true);status('Independent copy created. Your original layout is unchanged.');});
   const status = (message, error = false) => { $("status").textContent = message; $("status").classList.toggle("error", error); };
   function connected(yes) {
     state.connected = yes; $("connection").textContent = yes ? "Local service connected" : token ? "Local service disconnected" : "Connection needed";
@@ -87,17 +104,20 @@ function startStudio() {
   }
   function updateActions() {
     const device = state.devices.find(item => item.serial === state.serial);
-    $("apply-button").disabled = !state.connected || !device || !state.draft || state.dirty || !state.layouts.some(item=>item.id===state.draft.id);
-    $("apply-button").title = !device ? "Select a connected display first" : state.dirty ? "Save your changes first" : "Send this layout to " + device.serial;
-    $("save-button").disabled = !state.connected || !state.draft;
+    $("apply-button").disabled = applying || !state.connected || !device || !state.draft;
+    $("apply-button").textContent = applying ? "Applying…" : "Save & apply";
+    $("apply-button").title = !device ? "Select a connected display first" : "Save and send this layout to " + device.serial;
+    $("save-button").disabled = applying || !state.connected || !state.draft;
     $("preview-button").disabled = !state.connected || !state.draft || state.previewing;
     $("draft-state").textContent = state.dirty ? "Unsaved changes" : state.layouts.some(item => item.id === state.draft?.id) ? "Saved" : "New layout";
   }
   function changed() { state.dirty = true; state.revision++; $("render-state").textContent = "Draft changed"; updateActions(); draw(); }
   function allowReplace() { return !state.dirty || window.confirm("Discard the unsaved changes in this layout?"); }
   function setDraft(layout, dirty = false) {
+    document.body.dataset.format=layout.height===180?'fan':'pump';
     state.draft = clone(layout); state.height = layout.height; state.selected = ""; state.dirty = dirty; state.revision++;
     canvas.width = layout.width; canvas.height = layout.height;
+    requestAnimationFrame(fitCanvas);
     $("layout-name").value = layout.name; $("rotation").value = String(layout.rotation || 0);
     $("background-color").value = layout.background.color; $("background-opacity").value = layout.background.opacity;
     $("canvas-size").textContent = layout.width + " × " + layout.height + " px";
@@ -109,7 +129,7 @@ function startStudio() {
   function element(tag, className, text) { const node=document.createElement(tag); if(className)node.className=className; if(text!==undefined)node.textContent=text; return node; }
   function renderDevices() {
     const list = $("devices"); list.replaceChildren(); $("device-count").textContent = state.devices.length;
-    $("device-note").textContent = state.devices.length ? "Choose the screen you want to configure." : "No USB displays connected. Build and preview a layout, then connect a display to apply it.";
+    $("device-note").textContent = state.serial ? "Editing " + (state.devices.find(d=>d.serial===state.serial)?.kind || "display") + " · " + state.serial : "Preview workspace. Choose a connected display above to send your design.";
     for (const device of state.devices) {
       const button=element("button", "device" + (state.serial===device.serial?" active":""));
       const icon=element("span", "screen-icon " + (device.kind==="fan"?"fan":"pump"));
@@ -188,13 +208,17 @@ function startStudio() {
     }
     if(!state.draft.overlays.length)list.append(element("p","hint","Add a reading, text or chart. Drag it anywhere on the display."));
     $("add-layer").disabled=state.draft.overlays.length>=32;
+    document.querySelectorAll('[data-widget]').forEach(button=>button.disabled=state.draft.overlays.length>=32);
   }
   function selectLayer(layerID) {state.selected=layerID;renderLayers();renderProperties();draw();}
   const propNames=["label","metric","x","y","w","h","font_size","color","min","max","opacity"];
   function renderProperties() {
     const layer=selected();$("properties").hidden=!layer;$("layer-tools").hidden=!layer;
+    $('inspector-empty').hidden=!!layer;
     $("selection-note").textContent=layer?"Drag to move. Bottom-right handle to resize. Arrow keys to nudge.":"Select a layer to move or resize it.";
     if(!layer)return;
+    $('inspector-title').textContent=({metric:'Live value',line:'History graph',pie:'Usage ring',bar:'Usage bar',text:'Text'})[layer.type] || 'Widget settings';
+    $('range-fields').hidden=!['line','pie','bar'].includes(layer.type);
     for(const key of propNames)$("prop-"+key).value=layer[key] ?? "";
     $("metric-field").hidden=layer.type==="text";
     $("prop-x").max=state.draft.width-layer.w;$("prop-y").max=state.draft.height-layer.h;$("prop-w").max=state.draft.width;$("prop-h").max=state.draft.height;
@@ -263,13 +287,13 @@ function startStudio() {
     } catch(error){$("render-state").textContent="Render failed";status(error.message,true);}
     finally{state.previewing=false;updateActions();}
   }
-  async function saveLayout() {
+  async function saveLayout(propagate=false) {
     const revision=state.revision, layout=clone(state.draft);$("save-button").disabled=true;
     try {
       const saved=await request("/v1/configurator/layouts/"+encodeURIComponent(layout.id),{method:"PUT",body:JSON.stringify(layout)});
       const index=state.layouts.findIndex(item=>item.id===saved.id);if(index<0)state.layouts.push(saved);else state.layouts[index]=saved;
       if(revision===state.revision)state.dirty=false;renderSaved();updateActions();status(revision===state.revision?"Layout saved. Displays already using this layout update automatically; use Apply to assign it to another display.":"Saved the previous revision. Your newest edits still need saving.");
-    }catch(error){status(error.message,true);}finally{updateActions();}
+    }catch(error){status(error.message,true);if(propagate===true)throw error;}finally{updateActions();}
   }
   $("auth-toggle").addEventListener("click",()=>{$("auth").hidden=!$("auth").hidden;if(!$("auth").hidden)$("token").focus();});
   $("auth-form").addEventListener("submit",event=>{event.preventDefault();token=$("token").value.trim();if(!token)return;state.epoch++;try{tokenStorage.setItem("jonsbo-token",token);}catch(_){}$("token").value="";state.initialized=false;poll();});
@@ -285,6 +309,10 @@ function startStudio() {
   $("properties").addEventListener("submit",event=>event.preventDefault());
   for(const key of propNames)$("prop-"+key).addEventListener("input",event=>{
     const layer=selected();if(!layer)return;
+    if(key==='metric'){
+      const previous=state.metrics.find(item=>item.id===layer.metric), next=state.metrics.find(item=>item.id===event.target.value);
+      if(next&&(!layer.label||layer.label===previous?.label)){layer.label=next.label;$('prop-label').value=next.label;renderLayers();}
+    }
     if(["label","metric","color"].includes(key))layer[key]=event.target.value;
     else{if(event.target.value===""||!Number.isFinite(Number(event.target.value)))return;layer[key]=Number(event.target.value);}
     if(key==="font_size")layer.font_size=Math.round(clamp(layer.font_size,8,96));
@@ -306,7 +334,13 @@ function startStudio() {
   for(const name of ["pointerup","pointercancel","lostpointercapture"])canvas.addEventListener(name,()=>{drag=null;});
   canvas.addEventListener("keydown",event=>{const layer=selected();if(!layer)return;const step=event.shiftKey?10:1,delta={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[event.key];if(!delta)return;event.preventDefault();layer.x+=delta[0];layer.y+=delta[1];constrainLayer(layer,640,state.height);changed();renderProperties();});
   $("preview-button").addEventListener("click",()=>renderPreview());$("save-button").addEventListener("click",saveLayout);
-  $("apply-button").addEventListener("click",async()=>{if($("apply-button").disabled)return;$("apply-button").disabled=true;try{await request("/v1/configurator/apply",{method:"POST",body:JSON.stringify({serial:state.serial,layout_id:state.draft.id,rotation:state.draft.rotation})});status("Layout applied to "+state.serial+". The display keeps running when this tab is closed.");}catch(error){status(error.message,true);}finally{updateActions();}});
+  $("apply-button").addEventListener("click",async()=>{
+    if($("apply-button").disabled)return;
+    const revision=state.revision,serial=state.serial,layout=clone(state.draft);
+    applying=true;updateActions();
+    try{await saveThenApply(()=>saveLayout(true),()=>revision===state.revision&&serial===state.serial,()=>request("/v1/configurator/apply",{method:"POST",body:JSON.stringify({serial,layout_id:layout.id,rotation:layout.rotation})}));status("Saved and applied to "+serial+". You can close the editor.");}
+    catch(error){status(error.message,true);}finally{applying=false;updateActions();}
+  });
   function waitMedia(target,event,signal,action,timeout=12000){return new Promise((resolve,reject)=>{let timer;const cleanup=()=>{clearTimeout(timer);target.removeEventListener(event,done);target.removeEventListener("error",failed);signal.removeEventListener("abort",aborted);};const done=()=>{cleanup();resolve();},failed=()=>{cleanup();reject(new Error("This media could not be decoded. Try a PNG/JPEG image or a browser-supported MP4/WebM video."));},aborted=()=>{cleanup();reject(new Error("Import cancelled."));};target.addEventListener(event,done,{once:true});target.addEventListener("error",failed,{once:true});signal.addEventListener("abort",aborted,{once:true});timer=setTimeout(()=>{cleanup();reject(new Error("Media decoding timed out. Try a shorter or smaller file."));},timeout);if(signal.aborted){aborted();return;}try{action();}catch(error){cleanup();reject(error);}});}
   async function importMedia(file){
     if(!file||state.importing)return;

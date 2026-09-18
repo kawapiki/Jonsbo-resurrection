@@ -63,3 +63,13 @@ test('blocked browser storage still permits a tray token, absent token is empty'
   assert.equal(readToken({hash:'#token=local',pathname:'/',search:''},history,blocked),'local');
   assert.equal(readToken({hash:'',pathname:'/',search:''},history,blocked),'');
 });
+
+test('save and apply never applies a failed or superseded save', async()=>{
+  let applied=0;
+  await assert.rejects(()=>helpers.saveThenApply(async()=>{throw new Error('disk full');},()=>true,async()=>{applied++;}),/disk full/);
+  await assert.rejects(()=>helpers.saveThenApply(async()=>{},()=>false,async()=>{applied++;}),/changed/);
+  assert.equal(applied,0);
+  const order=[];
+  await helpers.saveThenApply(async()=>{order.push('saved');},()=>true,async()=>{order.push('applied');});
+  assert.deepEqual(order,['saved','applied']);
+});

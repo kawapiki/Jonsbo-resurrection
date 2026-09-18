@@ -7,10 +7,10 @@ For source builds run `bin/jonsbo.exe serve --all`. Open `http://127.0.0.1:8787/
 ## Compose a screen
 
 1. Select a connected pump or fan. Without connected hardware, use a virtual pump/fan canvas for previews.
-2. Choose one of five presets or start editing a saved layout. Pump canvases are 640×480; horizontal fan canvases are 640×180. Rotation handles physical mounting separately.
-3. Add metric values, history lines, usage pie charts, bars, or text. Move and resize overlays on the canvas or enter precise coordinates in their properties. Edit labels, colors, font size, opacity and chart range; reorder or remove layers.
-4. Choose a background color or import a picture/video. Preview renders the current draft without applying it to a physical display.
-5. Save the layout and apply it to the selected display. Applied bindings and media survive application restarts. Editing and saving a layout already bound to screens updates those screens; duplicate it first if you want a separate design.
+2. Open **Themes** to choose one of five presets, or expand **Saved layouts**. Pump canvases are 640×480; horizontal fan canvases are 640×180. Rotation handles physical mounting separately.
+3. Open **Widgets** to add a live value, history graph, usage ring, usage bar, or text. Move and resize overlays on the canvas or enter precise coordinates in their properties. Edit labels, colors, font size, opacity and chart range; reorder or remove layers.
+4. Open **Background** to choose a color or import a picture/video. Preview renders the current draft without applying it to a physical display.
+5. Choose **Save & apply** to save and assign the layout in one action. **Save layout** only saves it. Applied bindings and media survive application restarts. Editing and saving a layout already bound to screens updates those screens; choose **Duplicate** first if you want a separate design. Precise position and chart scale are available in expandable inspector sections.
 
 ## Real metrics and history
 
