@@ -50,9 +50,15 @@ jobs:
         with:
           go-version: stable
           cache: false
+      - name: Set up JavaScript test runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test editor helpers
+        run: node --test internal/configuratorweb/*.test.mjs
       - name: Test portable packages
-        run: go test ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./examples/event-producer
+        run: go test ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./modules/configurator ./internal/configuratorweb ./internal/telemetry ./examples/event-producer
       - name: Vet portable packages
-        run: go vet ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./examples/event-producer
+        run: go vet ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./modules/configurator ./internal/configuratorweb ./internal/telemetry ./examples/event-producer
       - name: Build portable packages
-        run: go build ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./examples/event-producer
+        run: go build ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./modules/configurator ./internal/configuratorweb ./internal/telemetry ./examples/event-producer

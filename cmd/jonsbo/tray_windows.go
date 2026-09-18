@@ -228,6 +228,16 @@ func tray(args []string) error {
 		Start: func() error { child.retries = 0; return child.start() }, Stop: child.stop,
 		OpenLogs:     func() error { return trayui.Open(filepath.Join(dir, "server.log")) },
 		OpenReleases: func() error { return trayui.Open(releasesURL) },
+		OpenConfigurator: func() error {
+			u, e := configuratorURL(dir)
+			if e != nil {
+				return e
+			}
+			if e = trayui.Open(u); e != nil {
+				return fmt.Errorf("could not open configurator in your browser")
+			}
+			return nil
+		},
 		StartupState: func() (bool, bool, error) {
 			if startupBusy {
 				return startupMode != startupconfig.Disabled, startupMode == startupconfig.Elevated, fmt.Errorf("startup settings are updating")

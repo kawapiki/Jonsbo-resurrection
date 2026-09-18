@@ -14,18 +14,6 @@ import (
 	"unsafe"
 )
 
-type GPU struct {
-	Name             string   `json:"name"`
-	UsagePercent     *float64 `json:"usage_percent"`
-	TemperatureC     *float64 `json:"temperature_c"`
-	HotspotC         *float64 `json:"hotspot_c"`
-	ClockMHz         *float64 `json:"clock_mhz"`
-	PowerW           *float64 `json:"power_w"`
-	FanRPM           *float64 `json:"fan_rpm"`
-	MemoryTotalBytes *uint64  `json:"memory_total_bytes"`
-	MemoryUsedBytes  *uint64  `json:"memory_used_bytes"`
-}
-
 func setAMDMemory(g *GPU, total int64, totalOK bool, usedMB int32, usedOK bool) {
 	g.MemoryTotalBytes, g.MemoryUsedBytes = nil, nil
 	if totalOK && total >= 0 {

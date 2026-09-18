@@ -31,3 +31,5 @@ If no screens are attached at launch, the tray server can run with API and senso
 
 This first public build is not Authenticode signed. Windows may show an unknown-publisher/SmartScreen prompt. Download only from the repository's Releases page and compare the published SHA-256 checksum. The ZIP includes dependency notices and matching signed-module source; keep these alongside the executables when redistributing.
 `config.json` in the tray app-data folder is optional. Copy and customize the example config there; when present it controls enabled modules. The tray still fixes token/log paths inside app data. Restart monitoring after editing it.
+
+Builds with the configurator include **Open configurator** in the tray menu. See [the editor guide](configurator.md) for saved overlays, themes and background media.

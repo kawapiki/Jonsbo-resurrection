@@ -8,16 +8,19 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/api"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/config"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/configuratorweb"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/output"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/winusb"
+	"github.com/kawapiki/Jonsbo-resurrection/modules/configurator"
 	"github.com/kawapiki/Jonsbo-resurrection/pkg/module"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -104,42 +107,6 @@ func serve(args []string) error {
 		defer f.Close()
 		log = f
 	}
-	token, err := config.Token(cfg.TokenFile)
-	if err != nil {
-		return err
-	}
-	var manager *output.Manager
-	var displays api.Displays
-	if *all {
-		ds, e := winusb.Enumerate()
-		if e != nil {
-			return e
-		}
-		if len(ds) == 0 && !*allowNoDisplays {
-			return fmt.Errorf("no supported displays connected")
-		}
-		assignments := map[string]module.Assignment{}
-		for serial, a := range cfg.Displays {
-			key := strings.ToUpper(serial)
-			if _, exists := assignments[key]; exists {
-				return fmt.Errorf("duplicate configured display %s", key)
-			}
-			assignments[key] = a
-		}
-		if len(ds) == 0 {
-			fmt.Fprintln(log, "No displays attached; API only. Restart monitoring after connecting displays.")
-		} else {
-			manager, e = output.New(runtime, output.USBDriver{}, ds, output.Options{Assignments: assignments, OnChange: statusLogger(log)})
-			if e != nil {
-				return e
-			}
-			displays = manager
-		}
-	}
-	handler, err := api.NewHandler(runtime, displays, token)
-	if err != nil {
-		return err
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	if *duration > 0 {
@@ -152,6 +119,69 @@ func serve(args []string) error {
 		return err
 	}
 	defer release()
+	token, err := config.Token(cfg.TokenFile)
+	if err != nil {
+		return err
+	}
+	editor, err := configurator.New(filepath.Join(filepath.Dir(cfg.TokenFile), "configurator"), runtime)
+	if err != nil {
+		return fmt.Errorf("configurator: %w", err)
+	}
+	if settings, ok := cfg.Modules["hardware"]; ok {
+		if interval, e := moduleInterval(settings.Options); e == nil {
+			editor.SetMaxSampleAge(max(3*interval, 3*time.Second))
+		}
+	}
+	if err = runtime.Register(editor); err != nil {
+		return err
+	}
+	source := configuredSource{Runtime: runtime, editor: editor}
+	var manager *output.Manager
+	var displays api.Displays
+	if *all {
+		ds, e := winusb.Enumerate()
+		if e != nil {
+			return e
+		}
+		if len(ds) == 0 && !*allowNoDisplays {
+			return fmt.Errorf("no supported displays connected")
+		}
+		assignments := map[string]module.Assignment{}
+		// Restore saved editor bindings only for attached displays. Retain missing
+		// device bindings on disk for the next time those displays are connected.
+		for serial, a := range editor.Bindings() {
+			for _, d := range ds {
+				if strings.EqualFold(serial, d.Serial) {
+					assignments[strings.ToUpper(serial)] = a
+					break
+				}
+			}
+		}
+		configuredSerials := map[string]bool{}
+		for serial, a := range cfg.Displays {
+			key := strings.ToUpper(serial)
+			if configuredSerials[key] {
+				return fmt.Errorf("duplicate configured display %s", key)
+			}
+			configuredSerials[key] = true
+			if _, saved := assignments[key]; !saved {
+				assignments[key] = a
+			}
+		}
+		if len(ds) == 0 {
+			fmt.Fprintln(log, "No displays attached; API only. Restart monitoring after connecting displays.")
+		} else {
+			manager, e = output.New(source, output.USBDriver{}, ds, output.Options{Assignments: assignments, OnChange: statusLogger(log)})
+			if e != nil {
+				return e
+			}
+			displays = manager
+		}
+	}
+	handler, err := api.NewHandlerWithUI(source, displays, token, editor.Handler(displays), configuratorweb.Files())
+	if err != nil {
+		return err
+	}
 	if *controlName != "" {
 		var childRelease func()
 		ctx, childRelease, err = monitorControl(ctx, *controlName)

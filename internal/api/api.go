@@ -79,23 +79,31 @@ func validHost(s string) bool {
 }
 
 type handler struct {
-	backend  Backend
-	displays Displays
-	token    [32]byte
-	renders  chan struct{}
-	streams  chan struct{}
-	requests chan struct{}
+	backend           Backend
+	displays          Displays
+	token             [32]byte
+	renders           chan struct{}
+	streams           chan struct{}
+	requests          chan struct{}
+	configurator, web http.Handler
+	editorRequests    chan struct{}
 }
 
 // NewHandler leaves listener, HTTP server timeouts, and token storage to the caller.
 func NewHandler(backend Backend, displays Displays, token string) (http.Handler, error) {
+	return NewHandlerWithUI(backend, displays, token, nil, nil)
+}
+
+// NewHandlerWithUI serves a public, data-free editor shell and an authenticated
+// configurator API behind the same host, origin and bearer-token checks.
+func NewHandlerWithUI(backend Backend, displays Displays, token string, configurator, web http.Handler) (http.Handler, error) {
 	if backend == nil {
 		return nil, errors.New("backend is required")
 	}
 	if len(token) < 32 || strings.TrimSpace(token) != token || strings.ContainsAny(token, "\r\n") {
 		return nil, errors.New("token must contain at least 32 characters without surrounding whitespace")
 	}
-	return &handler{backend: backend, displays: displays, token: sha256.Sum256([]byte(token)), renders: make(chan struct{}, 2), streams: make(chan struct{}, 32), requests: make(chan struct{}, 32)}, nil
+	return &handler{backend: backend, displays: displays, token: sha256.Sum256([]byte(token)), renders: make(chan struct{}, 2), streams: make(chan struct{}, 32), requests: make(chan struct{}, 32), configurator: configurator, web: web, editorRequests: make(chan struct{}, 2)}, nil
 }
 
 func fail(w http.ResponseWriter, status int) { http.Error(w, http.StatusText(status), status) }
@@ -155,6 +163,22 @@ func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+
+	if !validHost(r.Host) {
+		fail(w, http.StatusForbidden)
+		return
+	}
+	origins := r.Header.Values("Origin")
+	if len(origins) > 1 || len(origins) == 1 && origins[0] != "http://"+r.Host {
+		fail(w, http.StatusForbidden)
+		return
+	}
+	if h.web != nil && !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/v1" {
+		h.web.ServeHTTP(w, r)
+		return
+	}
 	auth := r.Header.Values("Authorization")
 	provided := ""
 	if len(auth) == 1 && strings.HasPrefix(auth[0], "Bearer ") {
@@ -166,19 +190,28 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusUnauthorized)
 		return
 	}
-	if !validHost(r.Host) {
-		fail(w, http.StatusForbidden)
-		return
-	}
-	origins := r.Header.Values("Origin")
-	if len(origins) > 1 || len(origins) == 1 && origins[0] != "http://"+r.Host {
-		fail(w, http.StatusForbidden)
-		return
-	}
 	if r.URL.Path == "/v1/events" {
 		if method(w, r, http.MethodGet) {
 			h.events(w, r)
 		}
+		return
+	}
+	if h.configurator != nil && (r.URL.Path == "/v1/configurator" || strings.HasPrefix(r.URL.Path, "/v1/configurator/")) {
+		select {
+		case h.editorRequests <- struct{}{}:
+			defer func() { <-h.editorRequests }()
+		default:
+			fail(w, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		controller := http.NewResponseController(w)
+		_ = controller.SetReadDeadline(time.Now().Add(30 * time.Second))
+		_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		defer controller.SetReadDeadline(time.Time{})
+		defer controller.SetWriteDeadline(time.Time{})
+		h.configurator.ServeHTTP(w, r.WithContext(ctx))
 		return
 	}
 	select {
