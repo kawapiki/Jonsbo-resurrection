@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	ai "github.com/kawapiki/Jonsbo-resurrection/modules/aisubscriptions"
 	"image"
 	"image/color"
 	"image/draw"
@@ -91,6 +92,7 @@ func (m *Module) render(ctx context.Context, l Layout, now time.Time) (image.Ima
 		}
 	}
 	lookup := map[string]Metric{}
+	aiSnapshot := aiState(m.source.Snapshot(), now)
 	for _, v := range metrics {
 		lookup[v.ID] = v
 	}
@@ -126,6 +128,10 @@ func (m *Module) render(ctx context.Context, l Layout, now time.Time) (image.Ima
 			ratio = max(0, math.Min(1, (*metric.Value-o.Min)/(o.Max-o.Min)))
 		}
 		switch o.Type {
+		case "ai-provider":
+			animate := o.Animate == nil || *o.Animate
+			widget := ai.DrawWidgetDetail(aiSnapshot, o.Provider, o.Detail, o.W, o.H, now, animate)
+			draw.Draw(layer, layer.Bounds(), widget, widget.Bounds().Min, draw.Src)
 		case "text":
 			text(layer, 0, 0, o.Label, o.FontSize, fg)
 		case "metric":

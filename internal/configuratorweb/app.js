@@ -16,7 +16,12 @@ function adaptLayout(layout, height) {
   // A size change creates a separate layout: an existing binding still expects
   // its original format, and built-in default IDs have fixed dimensions.
   if (height !== layout.height && layout.id) next.id = "layout-" + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 20);
-  next.overlays = (next.overlays || []).map(layer => constrainLayer({...layer, y: Math.round(layer.y * scale), h: Math.max(1, Math.round(layer.h * scale)), font_size: Math.round(clamp(layer.font_size * Math.min(1, scale), 8, 96))}, 640, height));
+  next.overlays = (next.overlays || []).map(layer => {
+    const adjusted={...layer, y:Math.round(layer.y*scale),h:Math.max(1,Math.round(layer.h*scale)),font_size:Math.round(clamp(layer.font_size*Math.min(1,scale),8,96))};
+    // Keep the provider's quota/token card readable when switching aspect ratios.
+    if(layer.type==='ai-provider' && height===180 && layout.height!==180)Object.assign(adjusted,{detail:'compact',h:150});
+    return constrainLayer(adjusted,640,height);
+  });
   return next;
 }
 function coverRect(sourceWidth, sourceHeight, width, height) {
@@ -32,6 +37,34 @@ function orientLayout(layout, assignment) {
 function metricValue(metrics, id) {
   const metric = metrics.find(item => item.id === id);
   return metric && typeof metric.value === "number" && Number.isFinite(metric.value) ? metric.value : null;
+}
+function aiPreferences(layer, reducedMotion = false) {
+ return {provider:layer.provider || 'openai',detail:layer.detail || 'compact',animate:!reducedMotion && layer.animate !== false};
+}
+function aiProviderView(info = {}, options = {}) {
+ const ready=info.ready===true, login=info.login || 'checking', monitoring=info.monitoring===true;
+ const primaryAction=monitoring?'disconnect':ready&&login==='signed-in'?'monitor':null;
+ const offline=!options.connected;
+ return {
+  cliLabel:offline?'Status unavailable':ready?'Installed':info.ready===false&&login==='unavailable'?'Not installed':login==='checking'?'Checking…':'Could not verify',
+  loginLabel:offline?'Status unavailable':({'signed-in':'Signed in with subscription','signed-out':'Signed out','api-key':'API key active — subscription sign-in needed',checking:'Checking…',unavailable:'Unavailable',error:'Could not verify sign-in'})[login] || 'Could not verify sign-in',
+  monitoringLabel:offline||typeof info.monitoring!=='boolean'?'Unknown':monitoring?'On':'Off',
+  usageAvailable:!offline&&ready&&login==='signed-in'&&monitoring,
+  primaryAction, primaryLabel:monitoring?'Stop monitoring':'Start monitoring',
+  loginHelp:!offline&&ready&&(login==='signed-out'||login==='api-key'),install:!offline&&info.ready===false&&login==='unavailable',
+  disabled:offline||!!options.busy
+ };
+}
+function aiActionAllowed(info, action, options) {
+ const view=aiProviderView(info,options);
+ return !view.disabled && (action==='check' || action===view.primaryAction);
+}
+function withAIWidget(layout, provider, newID) {
+ if(!['openai','claude'].includes(provider))throw new Error('Choose a supported provider.');
+ if(layout.overlays.length>=32)throw new Error('A layout can contain up to 32 widgets.');
+ const next=clone(layout),index=next.overlays.length;
+ next.overlays.push(constrainLayer({id:newID,type:'ai-provider',provider,detail:'compact',animate:true,metric:'',label:'',x:20+(index%5)*16,y:20+(index%4)*16,w:360,h:150,color:'#a8c9ff',font_size:28,min:0,max:100,opacity:1},layout.width,layout.height));
+ return next;
 }
 function mediaPlan(width, height, duration) {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) throw new Error("Media has no readable dimensions.");
@@ -60,7 +93,7 @@ function layoutForDisplay(device, layouts, bindings, newID) {
   if(!base)throw new Error('Default layout unavailable. Reconnect to the service.');
   return orientLayout({...clone(base),id:newID,name:(device.kind==='fan'?'Fan':'Pump')+' '+device.serial.slice(-4)+' custom'},assignment);
 }
-if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken, saveThenApply, layoutForDisplay};
+if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken, saveThenApply, layoutForDisplay, aiPreferences, aiProviderView, aiActionAllowed, withAIWidget};
 
 function startStudio() {
   const $ = id => document.getElementById(id);
@@ -68,6 +101,9 @@ function startStudio() {
   let token = readToken(location, history, tokenStorage);
   const state = {layouts: [], themes: [], themeCache: {}, themeHeight: 0, themeRequestHeight: 0, assets: [], metrics: [], history: [], devices: [], bindings: {}, draft: null, selected: "", serial: "", height: 480, dirty: false, revision: 0, connected: false, initialized: false, pollTimer: null, polling: false, previewing: false, importing: null, background: null, backgroundID: "", backgroundPending: "", renderURL: "", epoch: 0};
   const canvas = $("canvas"), ctx = canvas.getContext("2d");
+  const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)'), aiImages=new Map();
+  let aiRefreshing=false, aiStatusTime=0, aiActionBusy=false, aiSetupBusy=false, aiStatusRevision=0, aiProviders=[];
+  reducedMotion.addEventListener('change',()=>{for(const image of aiImages.values())image.close();aiImages.clear();refreshAIWidgets();});
   const well=document.querySelector('.canvas-well'), frame=document.querySelector('.canvas-frame');
   function fitCanvas(){frame.style.width=Math.max(40,Math.min(656,well.clientWidth-32,(well.clientHeight-32)*canvas.width/canvas.height))+'px';}
   new ResizeObserver(fitCanvas).observe(well);
@@ -80,6 +116,9 @@ function startStudio() {
   const deviceImages=new Map();
   function displayName(device){return (device.kind==='fan'?'Fan':'Pump')+' · '+device.serial.slice(-6);}
   function showPage(next){page=next;document.body.dataset.page=next;requestAnimationFrame(fitCanvas);updateActions();}
+  function openAIUsage(){showPage('ai');renderAIUsage();refreshAIStatus(true);$('ai-usage-title').focus();}
+  $('ai-back-displays').addEventListener('click',()=>{showPage('home');renderDevices();refreshDisplayPreviews();});
+  $('ai-back-editor').addEventListener('click',()=>{showPage('editor');renderDevices();});
   $('back-displays').addEventListener('click',()=>{showPage('home');renderDevices();refreshDisplayPreviews();});
   $('resume-design').addEventListener('click',()=>{showPage('editor');renderDevices();});
   $('design-offline').addEventListener('click',()=>{if(!state.serial&&state.dirty){showPage('editor');return;}if(!allowReplace())return;state.serial='';setDraft(blank(480));showPage('editor');renderDevices();});
@@ -87,7 +126,7 @@ function startStudio() {
     document.querySelectorAll('[data-library]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.library===name)));
     document.querySelectorAll('[data-library-panel]').forEach(panel=>panel.hidden=panel.dataset.libraryPanel!==name);
   }
-  document.querySelectorAll('[data-library]').forEach(button=>button.addEventListener('click',()=>showLibrary(button.dataset.library)));
+  document.querySelectorAll('[data-library]').forEach(button=>button.addEventListener('click',()=>button.dataset.library==='ai'?openAIUsage():showLibrary(button.dataset.library)));
   document.querySelectorAll('[data-widget]').forEach(button=>button.addEventListener('click',()=>{$('add-type').value=button.dataset.widget;$('add-layer').click();}));
   $('browse-widgets').addEventListener('click',()=>showLibrary('widgets'));
   $('duplicate-layout').addEventListener('click',()=>{const copy=clone(state.draft);copy.id=id('layout');copy.name+=' copy';setDraft(copy,true);status('Independent copy created. Your original layout is unchanged.');});
@@ -95,6 +134,7 @@ function startStudio() {
   function connected(yes) {
     state.connected = yes; $("connection").textContent = yes ? "Local service connected" : token ? "Local service disconnected" : "Connection needed";
     $("connection-dot").className = "dot " + (yes ? "live" : "error"); updateActions();
+    renderAIUsage();
   }
   async function request(path, options = {}) {
     const controller = new AbortController(), external = options.signal;
@@ -126,6 +166,7 @@ function startStudio() {
     $("preview-button").disabled = !state.connected || !state.draft || state.previewing;
     $("draft-state").textContent = state.dirty ? "Unsaved changes" : state.layouts.some(item => item.id === state.draft?.id) ? "Saved" : "New layout";
     $('resume-design').hidden=!state.dirty;
+    document.querySelectorAll('[data-ai-widget]').forEach(button=>button.disabled=!state.draft||state.draft.overlays.length>=32);
   }
   function changed() { state.dirty = true; state.revision++; $("render-state").textContent = "Draft changed"; updateActions(); draw(); }
   function allowReplace() { return !state.dirty || window.confirm("Discard the unsaved changes in this layout?"); }
@@ -253,7 +294,8 @@ function startStudio() {
     const list=$("layers");list.replaceChildren();$("layer-count").textContent=state.draft.overlays.length+" layers";
     for (const layer of [...state.draft.overlays].reverse()) {
       const button=element("button","layer"+(state.selected===layer.id?" active":"")),swatch=element("span","swatch");swatch.style.backgroundColor=layer.color;
-      button.append(swatch,element("span","",layer.label||layer.type));button.setAttribute("aria-pressed",String(state.selected===layer.id));
+      const title=layer.type==='ai-provider'?(aiPreferences(layer).provider==='claude'?'Claude':'ChatGPT / Codex'):layer.label||layer.type;
+      button.append(swatch,element("span","",title));button.setAttribute("aria-pressed",String(state.selected===layer.id));
       button.addEventListener("click",()=>selectLayer(layer.id));list.append(button);
     }
     if(!state.draft.overlays.length)list.append(element("p","hint","Add a reading, text or chart. Drag it anywhere on the display."));
@@ -267,10 +309,14 @@ function startStudio() {
     $('inspector-empty').hidden=!!layer;
     $("selection-note").textContent=layer?"Drag to move. Bottom-right handle to resize. Arrow keys to nudge.":"Select a layer to move or resize it.";
     if(!layer)return;
-    $('inspector-title').textContent=({metric:'Live value',line:'History graph',pie:'Usage ring',bar:'Usage bar',text:'Text'})[layer.type] || 'Widget settings';
+    $('inspector-title').textContent=({metric:'Live value',line:'History graph',pie:'Usage ring',bar:'Usage bar',text:'Text','ai-provider':'AI subscription'})[layer.type] || 'Widget settings';
     $('range-fields').hidden=!['line','pie','bar'].includes(layer.type);
     for(const key of propNames)$("prop-"+key).value=layer[key] ?? "";
-    $("metric-field").hidden=layer.type==="text";
+    $("metric-field").hidden=layer.type==="text" || layer.type==='ai-provider';
+    $('ai-fields').hidden=layer.type!=='ai-provider';
+    $('label-field').hidden=layer.type==='ai-provider';$('style-fields').hidden=layer.type==='ai-provider';
+    const prefs=aiPreferences(layer);$('prop-provider').value=prefs.provider;$('prop-detail').value=prefs.detail;$('prop-animate').checked=prefs.animate;
+    $('ai-motion-note').hidden=!reducedMotion.matches;
     $("prop-x").max=state.draft.width-layer.w;$("prop-y").max=state.draft.height-layer.h;$("prop-w").max=state.draft.width;$("prop-h").max=state.draft.height;
     const index=state.draft.overlays.indexOf(layer);$("layer-down").disabled=index===0;$("layer-up").disabled=index===state.draft.overlays.length-1;
   }
@@ -283,7 +329,12 @@ function startStudio() {
       context.fillStyle=layer.color;context.strokeStyle=layer.color;context.lineWidth=2;context.textBaseline="top";
       const font=layer.font_size || 20, metric=metrics.find(item=>item.id===layer.metric), value=metricValue(metrics,layer.metric);
       context.font=font+"px Segoe UI, sans-serif";
-      if(layer.type==="text") context.fillText(layer.label,layer.x,layer.y,layer.w);
+      if(layer.type==='ai-provider') {
+        const image=state.connected && aiImages.get(aiWidgetKey(layer));
+        if(image)context.drawImage(image,layer.x,layer.y,layer.w,layer.h);
+        else {context.font='14px Segoe UI, sans-serif';context.fillText((aiPreferences(layer).provider==='claude'?'Claude':'OpenAI')+' · --',layer.x+8,layer.y+8,layer.w-16);context.font='11px Segoe UI, sans-serif';context.fillText(state.connected?'Loading provider…':'Connect to the local service',layer.x+8,layer.y+32,layer.w-16);}
+      }
+      else if(layer.type==="text") context.fillText(layer.label,layer.x,layer.y,layer.w);
       else {
         const labelSize=Math.max(8,Math.min(16,font*.5));context.font=labelSize+"px Segoe UI, sans-serif";
         context.fillText(layer.label || metric?.label || layer.metric,layer.x,layer.y,layer.w);
@@ -304,6 +355,73 @@ function startStudio() {
     context.restore();
   }
   function draw(){if(state.draft)paint(ctx,state.draft,true);}
+  function aiWidgetKey(layer){return JSON.stringify({...aiPreferences(layer,reducedMotion.matches),w:layer.w,h:layer.h});}
+  async function refreshAIWidgets(){
+    if(aiRefreshing||!state.connected||!state.draft)return;aiRefreshing=true;const epoch=state.epoch;
+    try{
+      const keys=new Set();
+      for(const layer of state.draft.overlays.filter(l=>l.type==='ai-provider')){
+        const key=aiWidgetKey(layer);if(keys.has(key))continue;keys.add(key);
+        try{const blob=await request('/v1/configurator/ai-widget.png',{method:'POST',body:JSON.stringify({...layer,x:0,y:0,...aiPreferences(layer,reducedMotion.matches)}),blob:true});const image=await createImageBitmap(blob);
+          if(epoch!==state.epoch||!state.connected){image.close();break;}aiImages.get(key)?.close();aiImages.set(key,image);
+        }catch(_){aiImages.get(key)?.close();aiImages.delete(key);}
+      }
+      for(const [key,image] of aiImages)if(!keys.has(key)){image.close();aiImages.delete(key);}
+      draw();
+    }finally{aiRefreshing=false;}
+  }
+  function renderAIUsage(){
+    for(const provider of ['openai','claude']){
+      const info=aiProviders.find(p=>p.id===provider)||{}, view=aiProviderView(info,{connected:state.connected,busy:aiActionBusy});
+      for(const row of ['cli','login','monitoring'])$('ai-'+provider+'-'+row).textContent=view[row+'Label'];
+      $('ai-'+provider+'-install').hidden=!view.install;
+      $('ai-'+provider+'-login-help').hidden=!view.loginHelp;
+      $('ai-'+provider+'-status').textContent=!state.connected?'Connect to the local display service to check native client status.':info.message || (view.primaryAction==='monitor'?'Ready to use your existing subscription login.':info.monitoring?'Monitoring subscription usage.':'Check native client status to see whether usage is available.');
+      document.querySelectorAll('[data-ai-provider="'+provider+'"]').forEach(button=>{
+        if(button.hasAttribute('data-ai-primary')){button.hidden=!view.primaryAction;button.dataset.aiAction=view.primaryAction||'monitor';button.textContent=view.primaryLabel;}
+        button.disabled=!aiActionAllowed(info,button.dataset.aiAction,{connected:state.connected,busy:aiActionBusy});
+      });
+      for(const metric of ['weekly','tokens']){
+        const value=view.usageAvailable?metricValue(state.metrics,'ai.'+provider+'.'+metric):null;
+        $('ai-'+provider+'-'+(metric==='weekly'?'quota':'tokens')).textContent=value===null?'--':metric==='weekly'?Math.round(value)+'%':new Intl.NumberFormat().format(value);
+      }
+      const tokenMetric=state.metrics.find(m=>m.id==='ai.'+provider+'.tokens');$('ai-'+provider+'-tokens-label').textContent=tokenMetric?.label || 'Tokens this week';
+    }
+    $('ai-setup').disabled=!state.connected||aiActionBusy||aiSetupBusy;
+    updateActions();
+  }
+  async function refreshAIStatus(force=false){
+    if(!state.connected || (!force && (aiActionBusy||Date.now()-aiStatusTime<5000)))return;
+    aiStatusTime=Date.now();const epoch=state.epoch,revision=++aiStatusRevision;
+    try{const data=await request('/v1/ai/status');
+      if(epoch!==state.epoch||revision!==aiStatusRevision||!state.connected)return;
+      aiProviders=data.providers||[];renderAIUsage();
+    }catch(error){if(epoch===state.epoch&&revision===aiStatusRevision){aiProviders=['openai','claude'].map(id=>({...aiProviders.find(p=>p.id===id),id,login:'error',message:'Could not check usage status. '+error.message}));renderAIUsage();}}
+  }
+  document.querySelectorAll('[data-ai-action]').forEach(button=>button.addEventListener('click',async()=>{
+    const provider=button.dataset.aiProvider, action=button.dataset.aiAction, epoch=state.epoch;
+    if(!aiActionAllowed(aiProviders.find(p=>p.id===provider),action,{connected:state.connected,busy:aiActionBusy}))return;
+    aiActionBusy=true;aiStatusRevision++;renderAIUsage();
+    $('ai-message').textContent=action==='check'?'Checking native client sign-in…':action==='monitor'?'Starting monitoring…':'Stopping monitoring…';
+    try{const result=await request('/v1/ai/providers/'+provider+'/'+action,{method:'POST',body:'{}',timeout:60000});if(epoch!==state.epoch||!state.connected)return;
+      $('ai-message').textContent=result?.message || (action==='monitor'?'Monitoring started with your existing native sign-in.':action==='disconnect'?'Monitoring stopped. Your native sign-in is kept.':'Native client status checked.');
+      await refreshAIStatus(true);await refreshAIWidgets();
+    }catch(error){if(epoch===state.epoch){$('ai-message').textContent=error.message;aiProviders=aiProviders.map(info=>info.id===provider?{...info,login:action==='disconnect'?info.login:'error',message:error.message}:info);}}
+    finally{aiActionBusy=false;renderAIUsage();}
+  }));
+  $('ai-setup').addEventListener('click',async()=>{
+    if(!state.connected||aiActionBusy||aiSetupBusy)return;const epoch=state.epoch;aiSetupBusy=true;
+    $('ai-setup').disabled=true;
+    try{const setup=await request('/v1/ai/setup');if(epoch!==state.epoch||!state.connected)return;$('ai-setup-steps').replaceChildren(...(setup.instructions||[]).map(instruction=>element('li','',instruction)));const {instructions,...settings}=setup;$('ai-setup-content').textContent=JSON.stringify(settings,null,2);$('ai-setup-panel').hidden=false;}
+    catch(error){if(epoch===state.epoch)$('ai-message').textContent=error.message;}finally{aiSetupBusy=false;$('ai-setup').disabled=!state.connected||aiActionBusy;}
+  });
+  $('ai-manage').addEventListener('click',openAIUsage);
+  function addAIWidget(provider){
+    try{const next=withAIWidget(state.draft,provider,id('layer'));state.draft=next;state.selected=next.overlays[next.overlays.length-1].id;changed();renderLayers();renderProperties();refreshAIWidgets();return true;}
+    catch(error){status(error.message,true);return false;}
+  }
+  document.querySelectorAll('[data-ai-widget]').forEach(button=>button.addEventListener('click',()=>{showPage('editor');showLibrary('widgets');if(addAIWidget(button.dataset.aiWidget))status('Provider widget added to your current layout. Save & apply when ready.');}));
+  for(const key of ['provider','detail','animate'])$('prop-'+key).addEventListener('change',event=>{const layer=selected();if(layer?.type!=='ai-provider')return;layer[key]=key==='animate'?event.target.checked:event.target.value;if(key==='detail'&&layer.detail==='expanded'&&state.height===480){layer.h=Math.min(300,state.height-layer.y);renderProperties();}changed();renderLayers();refreshAIWidgets();});
   async function poll() {
     clearTimeout(state.pollTimer);if(state.polling||!token)return;state.polling=true;const epoch=state.epoch,requestedHeight=state.height;
     try {
@@ -314,15 +432,16 @@ function startStudio() {
       state.assets=data.assets||[];state.metrics=data.metrics||[];state.history=data.history||[];state.bindings=data.bindings||{};state.devices=devices||[];
       connected(true);$("auth").hidden=true;
       if(!state.initialized) {
-        state.initialized=true;renderSaved();showPage('home');
+        state.initialized=true;renderSaved();
         status(state.devices.length?'Choose a display to edit its layout.':'No displays detected by this service. Check that display monitoring is running.');
       }
       if(state.serial&&!state.devices.some(device=>device.serial===state.serial)){state.serial="";status("Display disconnected. Your layout is still here; reconnect the display to apply it.",true);}
       renderDevices();renderSaved();renderAssets();renderMetrics();draw();
+      refreshAIStatus();refreshAIWidgets();
       if(page==='home')await refreshDisplayPreviews();
       if($("render-panel").open&&!state.dirty)await renderPreview(true);
-    } catch(error) {if(epoch===state.epoch){connected(false);state.metrics=state.metrics.map(m=>({...m,value:null}));renderMetrics();renderDevices();status(error.message || "Could not reach the local service. Keep it running and try again.",true);}}
-    finally {state.polling=false;if(token)state.pollTimer=setTimeout(poll,state.connected?2000:5000);}
+    } catch(error) {if(epoch===state.epoch){connected(false);state.metrics=state.metrics.map(m=>({...m,value:null}));renderMetrics();renderDevices();draw();status(error.message || "Could not reach the local service. Keep it running and try again.",true);}}
+    finally {state.polling=false;if(token)state.pollTimer=setTimeout(poll,state.connected?1000:5000);}
   }
   async function renderPreview(quiet=false) {
     if(state.previewing||!state.draft||!state.connected)return;
@@ -344,8 +463,9 @@ function startStudio() {
     }catch(error){status(error.message,true);if(propagate===true)throw error;}finally{updateActions();}
   }
   $("auth-toggle").addEventListener("click",()=>{$("auth").hidden=!$("auth").hidden;if(!$("auth").hidden)$("token").focus();});
-  $("auth-form").addEventListener("submit",event=>{event.preventDefault();token=$("token").value.trim();if(!token)return;state.epoch++;try{tokenStorage.setItem("jonsbo-token",token);}catch(_){}$("token").value="";state.initialized=false;poll();});
-  $("forget-token").addEventListener("click",()=>{token="";state.epoch++;try{tokenStorage.removeItem("jonsbo-token");}catch(_){}clearTimeout(state.pollTimer);connected(false);state.metrics=state.metrics.map(m=>({...m,value:null}));renderMetrics();renderDevices();status("Token forgotten in this tab. Paste a token to reconnect.");});
+  function clearAIStatus(){aiProviders=[];aiStatusTime=0;aiStatusRevision++;$('ai-message').textContent='';$('ai-setup-panel').hidden=true;$('ai-setup-content').textContent='';}
+  $("auth-form").addEventListener("submit",event=>{event.preventDefault();token=$("token").value.trim();if(!token)return;state.epoch++;clearAIStatus();try{tokenStorage.setItem("jonsbo-token",token);}catch(_){}$("token").value="";state.initialized=false;poll();});
+  $("forget-token").addEventListener("click",()=>{token="";state.epoch++;clearAIStatus();try{tokenStorage.removeItem("jonsbo-token");}catch(_){}clearTimeout(state.pollTimer);connected(false);state.metrics=state.metrics.map(m=>({...m,value:null}));renderMetrics();renderDevices();status("Token forgotten in this tab. Paste a token to reconnect.");});
   document.querySelectorAll("[data-height]").forEach(button=>button.addEventListener("click",()=>{const height=Number(button.dataset.height);state.serial="";if(height!==state.height||state.draft.rotation!==(height===180?90:0))setDraft(orientLayout(adaptLayout(state.draft,height)),true);renderDevices();renderThemes();status("Virtual "+(height===180?"fan":"pump")+" preview. Select a connected display to apply.");}));
   $("saved-layout").addEventListener("change",event=>{const chosen=state.layouts.find(layout=>layout.id===event.target.value);if(!chosen)return;if(!allowReplace()){event.target.value=state.draft.id;return;}const device=state.devices.find(item=>item.serial===state.serial);if(device&&(device.kind==="fan"?180:480)!==chosen.height)state.serial="";setDraft(state.serial?orientLayout(chosen,currentAssignment()):chosen);renderDevices();renderThemes();});
   $("new-layout").addEventListener("click",()=>{if(allowReplace())setDraft(blank(state.height),true);});
@@ -369,6 +489,7 @@ function startStudio() {
   for(const key of ["x","y","w","h","font_size"])$("prop-"+key).addEventListener("change",renderProperties);
   $("add-layer").addEventListener("click",()=>{
     if(state.draft.overlays.length>=32)return;const type=$("add-type").value,index=state.draft.overlays.length;
+    if(type==='ai-provider'){addAIWidget('openai');return;}
     const layer={id:id("layer"),type,metric:"cpu.usage",label:type==="text"?"Your text":"CPU usage",x:20+(index%5)*16,y:20+(index%4)*16,w:type==="line"?280:190,h:type==="pie"?160:type==="text"?48:90,color:"#a8c9ff",font_size:28,min:0,max:100,opacity:1};
     constrainLayer(layer,640,state.height);state.draft.overlays.push(layer);state.selected=layer.id;changed();renderLayers();renderProperties();
   });
@@ -424,7 +545,7 @@ function startStudio() {
   }
   $("media-file").addEventListener("change",event=>importMedia(event.target.files[0]));$("cancel-import").addEventListener("click",()=>state.importing?.abort());
   window.addEventListener("beforeunload",event=>{if(state.dirty||state.importing){event.preventDefault();event.returnValue="";}});
-  window.addEventListener("pagehide",()=>{state.importing?.abort();if(state.renderURL)URL.revokeObjectURL(state.renderURL);});
+  window.addEventListener("pagehide",()=>{state.importing?.abort();for(const image of aiImages.values())image.close();aiImages.clear();if(state.renderURL)URL.revokeObjectURL(state.renderURL);});
   setDraft(blank(480));showPage('home');renderDevices();if(token)poll();else{$("auth").hidden=false;connected(false);status("Open Display studio from the tray, or enter your local API token to connect.");}
 }
 if(typeof document!=="undefined")startStudio();

@@ -30,6 +30,9 @@ type Background struct {
 	Opacity float64 `json:"opacity"`
 }
 type Overlay struct {
+	Provider string  `json:"provider,omitempty"`
+	Animate  *bool   `json:"animate,omitempty"`
+	Detail   string  `json:"detail,omitempty"`
 	ID       string  `json:"id"`
 	Type     string  `json:"type"`
 	Metric   string  `json:"metric"`
@@ -88,6 +91,12 @@ func metricDefinitions() []Metric {
 		{ID: "gpu.vram", Label: "GPU memory", Unit: "GiB", Max: 1}, {ID: "ram.usage", Label: "RAM usage", Unit: "%", Max: 100},
 		{ID: "ram.free", Label: "RAM free", Unit: "GiB", Max: 1}, {ID: "disk.used", Label: "Disk used", Unit: "%", Max: 100},
 		{ID: "disk.free", Label: "Disk free", Unit: "GiB", Max: 1},
+		{ID: "ai.openai.weekly", Label: "OpenAI 7-day quota", Unit: "%", Max: 100},
+		{ID: "ai.openai.tokens", Label: "OpenAI tokens this week", Unit: "tokens", Max: 1000000},
+		{ID: "ai.openai.sessions", Label: "OpenAI active sessions", Unit: "sessions", Max: 128},
+		{ID: "ai.claude.weekly", Label: "Claude 7-day quota", Unit: "%", Max: 100},
+		{ID: "ai.claude.tokens", Label: "Claude tokens this week", Unit: "tokens", Max: 1000000},
+		{ID: "ai.claude.sessions", Label: "Claude active sessions", Unit: "sessions", Max: 128},
 	}
 }
 func finite(v float64) bool  { return !math.IsNaN(v) && !math.IsInf(v, 0) }
@@ -127,6 +136,13 @@ func ValidateLayout(l Layout) error {
 			return invalid("overlay color, opacity, font size or label")
 		}
 		switch o.Type {
+		case "ai-provider":
+			if o.Provider != "" && o.Provider != "openai" && o.Provider != "claude" {
+				return invalid("AI provider")
+			}
+			if o.Detail != "" && o.Detail != "compact" && o.Detail != "expanded" {
+				return invalid("AI detail")
+			}
 		case "text":
 		case "metric", "line", "pie", "bar":
 			if !metrics[o.Metric] {

@@ -238,10 +238,12 @@ func (m *Module) sample(now time.Time) {
 		} `json:"disks"`
 	}
 	available := false
+	snapshots := m.source.Snapshot()
+	ai := aiState(snapshots, now)
 	m.mu.RLock()
 	maxAge := m.maxSampleAge
 	m.mu.RUnlock()
-	for _, st := range m.source.Snapshot() {
+	for _, st := range snapshots {
 		if st.Module.ID == "hardware" && st.Status == "running" && st.Error == "" && !st.UpdatedAt.IsZero() && now.Sub(st.UpdatedAt) <= maxAge && now.Sub(st.UpdatedAt) >= -time.Second {
 			available = json.Unmarshal(st.Data, &s) == nil
 			break
@@ -288,8 +290,14 @@ func (m *Module) sample(now time.Time) {
 			}
 		}
 	}
+	aiMetrics(ai, now, values)
 	for i := range metrics {
 		metrics[i].Value = values[metrics[i].ID]
+		for _, p := range ai.Providers {
+			if metrics[i].ID == "ai."+p.ID+".tokens" && p.UsageLabel != "" {
+				metrics[i].Label = p.ID + " " + p.UsageLabel
+			}
+		}
 		if v := maxima[metrics[i].ID]; v > 0 {
 			metrics[i].Max = v
 		}

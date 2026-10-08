@@ -55,7 +55,7 @@ jobs:
         with:
           node-version: '22'
       - name: Test editor helpers
-        run: node --test internal/configuratorweb/*.test.mjs
+        run: node --test internal/configuratorweb/*.test.mjs integrations/browser/*.test.mjs
       - name: Test portable packages
         run: go test ./pkg/module ./internal/engine ./internal/api ./internal/config ./internal/output ./modules/example ./modules/configurator ./internal/configuratorweb ./internal/telemetry ./examples/event-producer
       - name: Vet portable packages

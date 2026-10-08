@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	ai "github.com/kawapiki/Jonsbo-resurrection/modules/aisubscriptions"
 	"image"
 	_ "image/jpeg"
 	"image/png"
@@ -74,6 +75,20 @@ func (m *Module) serve(w http.ResponseWriter, r *http.Request, d Displays) error
 		return module.ErrNotFound
 	}
 	p := strings.TrimPrefix(r.URL.Path, prefix)
+	if p == "/ai-widget.png" && r.Method == http.MethodPost {
+		var o Overlay
+		if err := body(w, r, &o, 4096); err != nil {
+			return err
+		}
+		l := Layout{ID: "ai-preview", Name: "AI preview", Width: 640, Height: 480, Background: Background{Color: "#000000", Opacity: 1}, Overlays: []Overlay{o}}
+		if o.Type != "ai-provider" {
+			return invalid("AI widget required")
+		}
+		if err := ValidateLayout(l); err != nil {
+			return err
+		}
+		return writePNG(w, ai.DrawWidgetDetail(aiState(m.source.Snapshot(), time.Now()), o.Provider, o.Detail, o.W, o.H, time.Now(), o.Animate == nil || *o.Animate))
+	}
 	if p == "" && r.Method == http.MethodGet {
 		width, height := 640, 480
 		var e error

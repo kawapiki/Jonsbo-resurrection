@@ -30,7 +30,7 @@ See the [configurator guide](docs/configurator.md) for themes, widgets, backgrou
 - Example Go module with message events, a generated sparkline, and an animated progress bar; an external event-producer boilerplate.
 - Static PNG/JPEG upload, orientation correction, per-display workers, and reconnection attempts for selected serials.
 
-Claude/Codex account/task adapters, Windows notification capture, persistent historical chart storage, full-motion video playback, and a module marketplace are **not implemented**. The extension interfaces and example are the starting point for that work.
+The [AI subscription module](docs/ai-subscriptions.md) connects native ChatGPT/Codex and Claude accounts, adds animated provider widgets, and observes configured desktop/CLI and browser activity. Quotas, weekly tokens and current context show only what the available feeds report. Windows notification capture, persistent historical charts, full-motion video playback and a module marketplace remain unimplemented.
 
 ## Download for Windows
 

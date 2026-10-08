@@ -7,34 +7,63 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/config"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/engine"
+	"github.com/kawapiki/Jonsbo-resurrection/modules/aisubscriptions"
 	"github.com/kawapiki/Jonsbo-resurrection/modules/example"
 	"github.com/kawapiki/Jonsbo-resurrection/modules/hardware"
 	"github.com/kawapiki/Jonsbo-resurrection/pkg/module"
+	"io"
+	"path/filepath"
 	"time"
 )
 
 // Community modules register one factory here. The engine and API do not need
 // to know their concrete types, sensor sources, event payloads, or renderers.
-type moduleFactory func(json.RawMessage) (module.Module, error)
+type moduleFactory func(config.Config, json.RawMessage) (module.Module, error)
 
 var moduleFactories = map[string]moduleFactory{
-	"hardware": func(options json.RawMessage) (module.Module, error) {
+	"hardware": func(_ config.Config, options json.RawMessage) (module.Module, error) {
 		d, e := moduleInterval(options)
 		if e != nil {
 			return nil, e
 		}
 		return hardware.New(d)
 	},
-	"example": func(options json.RawMessage) (module.Module, error) {
+	"example": func(_ config.Config, options json.RawMessage) (module.Module, error) {
 		d, e := moduleInterval(options)
 		if e != nil {
 			return nil, e
 		}
 		return example.New(d)
 	},
+	"ai-subscriptions": func(c config.Config, options json.RawMessage) (module.Module, error) {
+		dir, err := aiDirectory(c, options)
+		if err != nil {
+			return nil, err
+		}
+		return aisubscriptions.New(dir)
+	},
+}
+
+func aiDirectory(c config.Config, raw json.RawMessage) (string, error) {
+	opts := struct {
+		Directory string `json:"storage_dir"`
+	}{Directory: filepath.Join(filepath.Dir(c.TokenFile), "ai-subscriptions")}
+	if len(raw) > 0 {
+		d := json.NewDecoder(bytes.NewReader(raw))
+		d.DisallowUnknownFields()
+		if err := d.Decode(&opts); err != nil {
+			return "", err
+		}
+		if err := d.Decode(new(any)); err != io.EOF {
+			return "", fmt.Errorf("trailing AI module options")
+		}
+	}
+	if opts.Directory == "" {
+		return "", fmt.Errorf("AI storage_dir cannot be empty")
+	}
+	return filepath.Abs(opts.Directory)
 }
 
 func moduleInterval(raw json.RawMessage) (time.Duration, error) {
@@ -67,7 +96,7 @@ func newRuntime(c config.Config) (*engine.Runtime, error) {
 		if !settings.Enabled {
 			continue
 		}
-		m, e := factory(settings.Options)
+		m, e := factory(c, settings.Options)
 		if e != nil {
 			return nil, fmt.Errorf("%s: %w", id, e)
 		}

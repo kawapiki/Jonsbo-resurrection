@@ -2,7 +2,7 @@
 
 The application exposes a versioned API on an explicit loopback IP, such as `127.0.0.1:8787` or `[::1]:8787`. Wildcard addresses, remote addresses, and DNS names are rejected as listen addresses. The command owns the listener and token file; `internal/api.NewHandler` provides the handler for embedders.
 
-Every request requires `Authorization: Bearer TOKEN`, including unknown routes. Use the generated token file from your `serve` command. Keep it private. Tokens must contain at least 32 characters. Tokens in query parameters do not authenticate requests. Responses disable caching, and the API does not enable CORS. The Host must be localhost or a literal loopback address; if an Origin header is present, it must equal `http://` plus the request Host exactly.
+Data requests require `Authorization: Bearer TOKEN`, including unknown API routes. Use the generated token file from your `serve` command; exact AI metadata routes use the scoped credentials described below. Keep tokens private. Tokens must contain at least 32 characters. Tokens in query parameters do not authenticate requests. Responses disable caching, and the API does not enable CORS. The Host must be localhost or a literal loopback address; if an Origin header is present, it must equal `http://` plus the request Host exactly. The data-free editor shell and its bundled assets are public.
 
 Start the server with `.\bin\jonsbo.exe serve --listen 127.0.0.1:8787 --token-file bin/api-token --example`. The default token path is `bin/api-token`. Without `--all`, the API and previews run without controlling USB displays. Add `--all` only when this process should own the displays. `--config configs/example.json` loads explicit configuration. The example module must be enabled with `--example` or configuration for the example event and preview below.
 
@@ -65,3 +65,32 @@ JSON request bodies reject unknown fields and extra JSON values. A request body 
 Non-streaming requests receive a five-second context deadline and read/write deadlines. Modules are trusted native Go code compiled into the application: cancellation is cooperative, and a stalled native call cannot be forcibly stopped by the handler. The server command also configures HTTP connection/header limits. At most 32 non-streaming requests run concurrently, including event handlers; a slot remains occupied until the call returns even if a native module ignores cancellation. PNG output is restricted to two million pixels and two concurrent rendering requests. At most 32 SSE streams are allowed. Each SSE write has a five-second deadline, and idle streams receive comment heartbeats every ten seconds. Disconnects cancel the subscription. Consumers should replace their current state with each full snapshot; identical successive snapshots are valid, and intermediate updates may be coalesced. Reconnect to obtain a fresh snapshot; no event replay history is retained.
 
 Posting an event from another process provides an adapter entry point. It does not automatically implement Claude or Codex integration, obtain account usage, run an agent, or scrape a session. An external adapter must independently obtain authorized data and translate it to events understood by a module. The API accepts no arbitrary shell commands, file paths, or remote URLs as built-in operations.
+
+## AI subscription routes
+
+`GET /v1/ai/status` and `GET /v1/ai/setup` require the master bearer credential.
+Status separates native executable availability (`ready`), authentication
+(`login`: `checking`, `signed-in`, `signed-out`, `api-key`, `unavailable`, or
+`error`), and saved monitoring preference (`monitoring`). Detection does not
+enable monitoring or publish unmonitored account data.
+
+`POST /v1/ai/providers/{openai|claude}/{check|monitor|connect|refresh|disconnect}`
+manages native subscription monitoring. `check` re-detects installation and native
+authentication. `monitor` verifies an existing subscription login and enables
+collection without OAuth. The legacy `connect` action aliases `monitor` and
+reports an error if the native CLI needs subscription sign-in.
+`disconnect` stops monitoring while keeping the native client signed in.
+No route starts provider sign-in or returns provider OAuth credentials. These
+routes exist when the `ai-subscriptions` module is enabled.
+
+Exact POST metadata routes use separate credentials: `/v1/ai/browser/events`
+uses `browser.token`; `/v1/ai/observer/{provider}/hook`,
+`/v1/ai/observer/claude/statusline`, and
+`/v1/ai/telemetry/{provider}/v1/logs` use `observer.token`.
+They retain Host checks and reject browser Origin headers. Scoped credentials
+cannot read account setup or change display assignments. Telemetry accepts
+bounded OTLP HTTP/JSON logs, not arbitrary model requests.
+
+State and images use the standard module endpoints, with module ID
+`ai-subscriptions` and views `overview`, `sessions`, `openai`, `claude`.
+Unknown usage fields are JSON `null`. See [subscription setup](ai-subscriptions.md).

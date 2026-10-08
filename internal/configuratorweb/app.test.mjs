@@ -3,6 +3,64 @@ import assert from 'node:assert/strict';
 import helpers from './app.js';
 const {constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken} = helpers;
 
+test('native subscription sign-in is reused with monitoring on or paused',()=>{
+ const paused=helpers.aiProviderView({ready:true,login:'signed-in',monitoring:false},{connected:true});
+ assert.equal(paused.primaryAction,'monitor');assert.equal(paused.primaryLabel,'Start monitoring');assert.equal(paused.loginHelp,false);assert.equal(paused.monitoringLabel,'Off');
+ const running=helpers.aiProviderView({ready:true,login:'signed-in',monitoring:true},{connected:true});
+ assert.equal(running.primaryAction,'disconnect');assert.equal(running.primaryLabel,'Stop monitoring');assert.equal(running.loginHelp,false);assert.equal(running.monitoringLabel,'On');
+ assert.equal(helpers.aiActionAllowed({ready:true,login:'signed-in',monitoring:false},'connect',{connected:true}),false);
+});
+test('only known signed-out or API-key native clients show manual subscription login guidance',()=>{
+ for(const login of ['signed-out','api-key']){
+  const view=helpers.aiProviderView({ready:true,login,monitoring:false},{connected:true});assert.equal(view.loginHelp,true);assert.equal(view.primaryAction,null);assert.equal(helpers.aiActionAllowed({ready:true,login},'connect',{connected:true}),false);
+ }
+ for(const login of ['checking','error','unavailable']){
+  const view=helpers.aiProviderView({ready:true,login,monitoring:false},{connected:true});assert.equal(view.loginHelp,false);assert.equal(view.primaryAction,null);assert.notEqual(view.loginLabel,'Signed out');
+ }
+ const missing=helpers.aiProviderView({ready:false,login:'unavailable'},{connected:true});assert.equal(missing.install,true);assert.equal(missing.cliLabel,'Not installed');assert.equal(missing.loginHelp,false);
+});
+test('monitoring actions reject busy, offline and stale sign-in actions',()=>{
+ const info={ready:true,login:'signed-in',monitoring:false};
+ for(const options of [{connected:false},{connected:true,busy:true}])for(const action of ['check','monitor','connect','disconnect'])assert.equal(helpers.aiActionAllowed(info,action,options),false);
+ assert.equal(helpers.aiActionAllowed(info,'monitor',{connected:true}),true);
+ assert.equal(helpers.aiActionAllowed({ready:true,login:'error',monitoring:true},'disconnect',{connected:true}),true);
+ assert.equal(helpers.aiActionAllowed({ready:true,login:'checking'},'connect',{connected:true}),false);
+ assert.equal(helpers.aiActionAllowed({},'check',{connected:true}),true);
+});
+test('usage rows become unavailable when the CLI loses its subscription login',()=>{
+ const options={connected:true};
+ assert.equal(helpers.aiProviderView({ready:true,login:'signed-in',monitoring:true},options).usageAvailable,true);
+ for(const login of ['signed-out','api-key','checking','error','unavailable'])assert.equal(helpers.aiProviderView({ready:true,login,monitoring:true},options).usageAvailable,false);
+ assert.equal(helpers.aiProviderView({ready:true,login:'signed-in',monitoring:false},options).usageAvailable,false);
+ assert.equal(helpers.aiProviderView({ready:true,login:'signed-in',monitoring:true},{connected:false}).usageAvailable,false);
+});
+test('provider-specific widget insertion preserves draft identity, content and preferences',()=>{
+ const draft={id:'saved-fan',name:'Unsaved edits',width:640,height:180,rotation:270,background:{color:'#123456'},overlays:[{id:'text',type:'text',label:'Keep me'}]};
+ const next=helpers.withAIWidget(draft,'claude','new-widget');
+ assert.equal(next.id,draft.id);assert.equal(next.name,draft.name);assert.equal(next.rotation,270);assert.deepEqual(next.background,draft.background);assert.equal(next.overlays[0].label,'Keep me');assert.equal(draft.overlays.length,1);
+ assert.equal(next.overlays[1].provider,'claude');assert.equal(next.overlays[1].h,150);assert.equal(next.overlays[1].animate,true);
+ assert.throws(()=>helpers.withAIWidget({...draft,overlays:Array(32).fill({})},'openai','new-widget'),/32/);
+});
+
+test('AI widget defaults, explicit animation off and reduced motion survive editing',()=>{
+ assert.deepEqual(helpers.aiPreferences({}),{provider:'openai',detail:'compact',animate:true});
+ assert.deepEqual(helpers.aiPreferences({provider:'claude',detail:'compact',animate:false}),{provider:'claude',detail:'compact',animate:false});
+ assert.equal(helpers.aiPreferences({animate:true},true).animate,false);
+ const layer={type:'ai-provider',provider:'claude',detail:'compact',animate:false,x:10,y:10,w:300,h:150,font_size:14};
+ const result=adaptLayout({width:640,height:480,overlays:[layer]},180).overlays[0];
+ assert.equal(result.provider,'claude');assert.equal(result.animate,false);assert.equal(result.detail,'compact');
+ assert.equal(metricValue([{id:'ai.openai.tokens',value:null}],'ai.openai.tokens'),null);
+});
+test('changing a pump AI widget to fan preserves readable compact quota and token rows',()=>{
+ const layer={id:'ai',type:'ai-provider',provider:'claude',detail:'expanded',animate:false,x:200,y:160,w:400,h:300,font_size:14};
+ const pump={id:'saved-pump',width:640,height:480,overlays:[layer]};
+ const fan=adaptLayout(pump,180), widget=fan.overlays[0];
+ assert.equal(widget.detail,'compact');assert.equal(widget.h,150);assert.equal(widget.y,30);
+ assert.equal(widget.provider,'claude');assert.equal(widget.animate,false);
+ assert.equal(layer.detail,'expanded');assert.equal(layer.h,300);
+ assert.equal(adaptLayout(fan,180).overlays[0].h,150);
+});
+
 test('dragging and resizing never leave the device canvas', () => {
   assert.deepEqual(constrainLayer({x:-10,y:900,w:999,h:20},640,180),{x:0,y:160,w:640,h:20});
   assert.deepEqual(constrainLayer({x:639,y:179,w:0,h:-1},640,180),{x:639,y:179,w:1,h:1});

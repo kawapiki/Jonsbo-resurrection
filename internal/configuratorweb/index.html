@@ -18,11 +18,38 @@
   <p id="overview-empty" class="overview-empty">Connecting to display service…</p>
   <div id="display-cards" class="display-cards"></div>
   <section class="overview-hardware"><div class="overview-section-heading"><h2>Live hardware readings</h2><span id="overview-reading-time">Waiting for sensors</span></div><div id="overview-metrics" class="metrics"></div></section>
-  <div class="offline-action"><p>Prepare a layout without changing any display.</p><button id="design-offline" class="quiet">Design without a display</button></div>
+  <div class="offline-action"><p>Prepare a layout without changing any display.</p><div><button id="ai-manage" class="quiet">Manage AI usage</button> <button id="design-offline" class="quiet">Design without a display</button></div></div>
+</main>
+<main id="ai-usage" class="ai-usage">
+  <nav class="ai-navigation" aria-label="AI usage navigation"><button id="ai-back-displays" class="quiet">Back to displays</button><button id="ai-back-editor" class="quiet">Return to layout</button></nav>
+  <div class="ai-usage-heading"><h1 id="ai-usage-title" tabindex="-1">AI usage</h1><p>Use your existing Codex or Claude Code sign-in to monitor subscription usage.</p></div>
+  <div class="ai-provider-list">
+    <section class="ai-provider-card" aria-labelledby="ai-openai-title">
+      <div class="ai-account-heading"><img src="/ai-assets/openai.png" alt="" width="40" height="40"><div><h2 id="ai-openai-title">ChatGPT / Codex</h2><p>Through Codex CLI</p></div></div>
+      <dl class="ai-status-rows"><div><dt>Codex CLI</dt><dd id="ai-openai-cli">Checking…</dd></div><div><dt>Native sign-in</dt><dd id="ai-openai-login">Checking…</dd></div><div><dt>Monitoring</dt><dd id="ai-openai-monitoring">Off</dd></div></dl>
+      <p id="ai-openai-status" role="status" class="ai-provider-message">Connect to the local service to check status.</p>
+      <div class="ai-usage-values"><div><small>7-day quota</small><strong id="ai-openai-quota">--</strong></div><div><small id="ai-openai-tokens-label">Tokens this week</small><strong id="ai-openai-tokens">--</strong></div></div>
+      <div id="ai-openai-install" class="ai-install" hidden><p>Install Codex CLI from the official guide, then select Check again.</p><a href="https://learn.chatgpt.com/docs/codex/cli" target="_blank" rel="noopener noreferrer">Codex installation guide</a></div>
+      <div id="ai-openai-login-help" class="ai-login-help" hidden><p>Sign in to your subscription in Codex CLI, then select Check again.</p><code>codex login</code></div>
+      <div class="ai-provider-actions"><button data-ai-provider="openai" data-ai-primary data-ai-action="monitor" class="primary" hidden>Start monitoring</button><button data-ai-provider="openai" data-ai-action="check" class="quiet">Check again</button><button data-ai-widget="openai" class="quiet">Add OpenAI widget</button></div>
+    </section>
+    <section class="ai-provider-card" aria-labelledby="ai-claude-title">
+      <div class="ai-account-heading"><img src="/ai-assets/claude.png" alt="" width="40" height="40"><div><h2 id="ai-claude-title">Claude</h2><p>Through Claude Code</p></div></div>
+      <dl class="ai-status-rows"><div><dt>Claude Code</dt><dd id="ai-claude-cli">Checking…</dd></div><div><dt>Native sign-in</dt><dd id="ai-claude-login">Checking…</dd></div><div><dt>Monitoring</dt><dd id="ai-claude-monitoring">Off</dd></div></dl>
+      <p id="ai-claude-status" role="status" class="ai-provider-message">Connect to the local service to check status.</p>
+      <div class="ai-usage-values"><div><small>7-day quota</small><strong id="ai-claude-quota">--</strong></div><div><small id="ai-claude-tokens-label">Tokens this week</small><strong id="ai-claude-tokens">--</strong></div></div>
+      <div id="ai-claude-install" class="ai-install" hidden><p>Install Claude Code from the official guide, then select Check again.</p><a href="https://code.claude.com/docs/en/setup" target="_blank" rel="noopener noreferrer">Claude Code installation guide</a></div>
+      <div id="ai-claude-login-help" class="ai-login-help" hidden><p>Sign in to your subscription in Claude Code, then select Check again.</p><code>claude auth login --claudeai</code></div>
+      <div class="ai-provider-actions"><button data-ai-provider="claude" data-ai-primary data-ai-action="monitor" class="primary" hidden>Start monitoring</button><button data-ai-provider="claude" data-ai-action="check" class="quiet">Check again</button><button data-ai-widget="claude" class="quiet">Add Claude widget</button></div>
+    </section>
+  </div>
+  <p id="ai-message" class="ai-action-message" role="status" aria-live="polite"></p>
+  <p class="ai-background-note">Monitoring refreshes subscription quotas in the background. You can close the editor; no terminal or active chat is needed. Stopping monitoring keeps your native client signed in. Missing values stay --.</p>
+  <details class="ai-activity-setup"><summary>Optional activity setup</summary><p>Forward local sessions, tokens and context from your native clients. These observed values stay separate from account quotas. Browser activity uses the paired companion.</p><button id="ai-setup" class="quiet">Show activity setup</button><div id="ai-setup-panel" hidden><ol id="ai-setup-steps"></ol><p class="hint">Merge these settings with your existing hooks and status line.</p><details><summary>Native client settings</summary><pre id="ai-setup-content" tabindex="0" aria-label="Native client setup proposal"></pre></details></div></details>
 </main>
 <main id="editor" class="studio">
   <aside class="library panel">
-    <nav class="library-nav" aria-label="Design library"><button data-library="themes" aria-pressed="true">Themes</button><button data-library="widgets" aria-pressed="false">Widgets</button><button data-library="background" aria-pressed="false">Background</button></nav>
+    <nav class="library-nav" aria-label="Design library"><button data-library="themes" aria-pressed="true">Themes</button><button data-library="widgets" aria-pressed="false">Widgets</button><button data-library="background" aria-pressed="false">Background</button><button data-library="ai" aria-pressed="false">AI</button></nav>
     <section data-library-panel="themes"><div class="panel-intro"><h2>Choose a starting point</h2><p>Five looks. Every element is yours to change.</p></div><div id="themes" class="themes"></div></section>
     <section data-library-panel="widgets" hidden><div class="panel-intro"><h2>Add to your display</h2><p>Choose a widget, then pick its reading in the inspector.</p></div>
       <div class="widget-library">
@@ -31,7 +58,8 @@
         <button data-widget="pie"><span class="widget-symbol ring">◔</span><strong>Usage ring</strong><small>A circular progress gauge</small></button>
         <button data-widget="bar"><span class="widget-symbol bar-icon">▰▰▱</span><strong>Usage bar</strong><small>Capacity at a glance</small></button>
         <button data-widget="text"><span class="widget-symbol">Aa</span><strong>Text</strong><small>Your own label or message</small></button>
-      </div><div hidden><select id="add-type"><option value="metric">Metric</option><option value="text">Text</option><option value="line">History line</option><option value="pie">Usage ring</option><option value="bar">Usage bar</option></select><button id="add-layer">Add</button></div>
+        <button data-widget="ai-provider"><span class="widget-symbol provider-marks"><img src="/ai-assets/openai.png" alt="OpenAI"><img src="/ai-assets/claude.png" alt="Claude"></span><strong>AI subscription</strong><small>Quota, observed tokens and activity</small></button>
+      </div><div hidden><select id="add-type"><option value="metric">Metric</option><option value="text">Text</option><option value="line">History line</option><option value="pie">Usage ring</option><option value="bar">Usage bar</option><option value="ai-provider">AI subscription</option></select><button id="add-layer">Add</button></div>
     </section>
     <section data-library-panel="background" hidden><div class="panel-intro"><h2>Set the scene</h2><p>Add a picture or a video loop behind your widgets.</p></div>
       <label class="upload"><span class="upload-symbol">＋</span><strong>Choose image or video</strong><small>PNG, JPG, WebP, MP4 or WebM</small><input id="media-file" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm"></label>
@@ -49,13 +77,14 @@
     <div class="canvas-footer"><span id="selection-note">Select a widget to edit it.</span><span id="canvas-size">640 × 480 px</span></div>
     <div class="canvas-actions"><label class="rotation">Orientation<select id="rotation"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label><button id="preview-button" class="quiet">Preview</button></div>
     <details id="render-panel" class="render-panel"><summary>Exact render <span id="render-state">Not rendered</span></summary><p class="hint">This is how the layout is rendered for your screen. Physical mounting rotation is applied afterwards.</p><img id="render-image" alt="Rendered layout preview" hidden></details>
-    <details class="telemetry"><summary>Hardware readings <span id="reading-time">Waiting for sensors</span></summary><div id="metrics" class="metrics"></div><p class="hint">Unavailable sensors show —. History starts with the service.</p></details>
+    <details class="telemetry"><summary>Live readings <span id="reading-time">Waiting for data</span></summary><div id="metrics" class="metrics"></div><p class="hint">Unavailable readings show --. AI totals cover the stated source and interval; history starts with the service.</p></details>
   </section>
   <aside class="properties panel">
     <div class="panel-heading"><h2>Layers</h2><span id="layer-count" class="count">0 layers</span></div><div id="layers" class="layers" aria-label="Layers"></div>
     <div id="inspector-empty" class="inspector-empty"><span>↖</span><h3>Make it yours</h3><p>Select a widget on the canvas or in the layer list to change its reading and appearance.</p><button id="browse-widgets" class="quiet">Add a widget</button></div>
-    <form id="properties" hidden><div class="inspector-heading"><h3 id="inspector-title">Widget settings</h3></div><label>Label / text<input id="prop-label" maxlength="120"></label><label id="metric-field">Reading<select id="prop-metric"></select></label>
-      <div class="field-grid"><label>Text size<input id="prop-font_size" type="number" min="8" max="96" step="1"></label><label>Color<input id="prop-color" type="color"></label></div>
+    <form id="properties" hidden><div class="inspector-heading"><h3 id="inspector-title">Widget settings</h3></div><label id="label-field">Label / text<input id="prop-label" maxlength="120"></label><label id="metric-field">Reading<select id="prop-metric"></select></label>
+      <fieldset id="ai-fields" hidden><legend>Provider widget</legend><label>Provider<select id="prop-provider"><option value="openai">ChatGPT / Codex</option><option value="claude">Claude</option></select></label><label>Detail<select id="prop-detail"><option value="compact">Compact quota and tokens</option><option value="expanded">Expanded with sessions</option></select></label><label class="check-field"><input id="prop-animate" type="checkbox" checked>Animate connection and activity</label><p id="ai-motion-note" class="hint" hidden>Your reduced motion preference pauses animation in this preview. Turn animation off to pause it on the display too.</p><p class="hint">Provider styling uses the same renderer as your display. Expanded sessions need a taller widget on a pump display.</p></fieldset>
+      <div id="style-fields" class="field-grid"><label>Text size<input id="prop-font_size" type="number" min="8" max="96" step="1"></label><label>Color<input id="prop-color" type="color"></label></div>
       <label>Opacity<input id="prop-opacity" type="range" min="0" max="1" step="0.05"></label>
       <details><summary>Position &amp; size</summary><div class="field-grid"><label>X<input id="prop-x" type="number" min="0" step="1"></label><label>Y<input id="prop-y" type="number" min="0" step="1"></label><label>Width<input id="prop-w" type="number" min="1" step="1"></label><label>Height<input id="prop-h" type="number" min="1" step="1"></label></div></details>
       <details id="range-fields"><summary>Chart scale</summary><div class="field-grid"><label>Minimum<input id="prop-min" type="number" step="any"></label><label>Maximum<input id="prop-max" type="number" step="any"></label></div></details>

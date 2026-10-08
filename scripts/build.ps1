@@ -30,6 +30,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Console build failed.' }
     & $go build -trimpath -ldflags "$flags -H windowsgui -X main.guiBuild=true" -o bin/JonsboResurrection.exe ./cmd/jonsbo
     if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed.' }
+    & $go build -trimpath -ldflags '-s -w' -o bin/jonsbo-ai-observer.exe ./cmd/jonsbo-ai-observer
+    if ($LASTEXITCODE -ne 0) { throw 'Native observer build failed.' }
+    & $go build -trimpath -ldflags '-s -w' -o bin/jonsbo-ai-bridge.exe ./cmd/jonsbo-ai-bridge
+    if ($LASTEXITCODE -ne 0) { throw 'Browser bridge build failed.' }
     Write-Output "Built Windows desktop and CLI version $Version ($revision)."
 } finally {
     $env:GOCACHE, $env:GOTOOLCHAIN, $env:GOBIN, $env:GOPATH = $oldCache, $oldToolchain, $oldBin, $oldPath

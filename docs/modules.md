@@ -123,3 +123,16 @@ visualization; do not send credentials or executable commands as events.
 Run `go test ./modules/example ./examples/event-producer` on any Go platform.
 On Windows, also run `go test ./modules/hardware`; those adapter tests use a fake
 collector and do not open hardware or write to displays.
+
+## Subscription module example
+
+`modules/aisubscriptions` implements the existing Module, Renderer and
+EventHandler contracts with bounded, durable metadata state. Its normalized
+records live in `pkg/aisubscriptions`; provider-specific parsing and native
+process ownership live in `internal/aiadapters`. The configurator uses the same
+`DrawWidgetDetail` renderer for browser PNGs and display compositions.
+
+Its event type is `observation`; ingestion validates source, mode, identity,
+timestamps and bounds before an atomic write. Adding this module does not alter
+USB protocols or hardware polling. See [subscription setup](ai-subscriptions.md)
+and [research](ai-subscription-research.md) for capability limits.

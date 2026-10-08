@@ -48,3 +48,23 @@ response-time guarantee has been established yet.
 Provide a minimal reproduction, affected version or commit, impact and a redacted
 description of the environment. Do not test against another person's machine or
 connected hardware without permission.
+
+## Optional AI subscription monitoring
+
+Subscription authentication is performed by native Codex/Claude Code. The
+application does not read shared OAuth credential files or send model turns.
+The native clients retain their own credential storage and renewal. CLI detection
+reads only native authentication status; starting monitoring reuses a subscription
+login. Jonsbo does not initiate provider sign-in; users sign in through their CLI.
+Scoped metadata credentials, local session titles and bounded usage history should be kept in a
+private user directory. Stopping monitoring detaches this observer; provider
+logout/revocation is separate.
+
+The optional Chromium companion reports visible interface metadata through a
+native host paired to an exact extension ID. It has no cookies permission and
+does not observe request bodies or chat text. The native host authorizes only
+metadata ingress with a browser-only token, disables inherited proxies and
+redirects, and enforces bounded message framing and a numeric loopback endpoint.
+Native hooks/status-line/telemetry use a different scoped credential; controller
+and display actions still require the master bearer token. Native ingress
+rejects Origin headers, and all routes retain the existing Host checks.

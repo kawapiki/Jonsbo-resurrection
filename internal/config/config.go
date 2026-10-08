@@ -7,9 +7,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/api"
 	"github.com/kawapiki/Jonsbo-resurrection/pkg/module"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +29,7 @@ type Config struct {
 }
 
 func Default() Config {
-	return Config{Listen: "127.0.0.1:8787", TokenFile: "bin/api-token", FrameInterval: "1s", Modules: map[string]Module{"hardware": {Enabled: true, Options: json.RawMessage(`{"interval":"1s"}`)}, "example": {Enabled: false, Options: json.RawMessage(`{"interval":"1s"}`)}}, Displays: map[string]module.Assignment{}}
+	return Config{Listen: "127.0.0.1:8787", TokenFile: "bin/api-token", FrameInterval: "1s", Modules: map[string]Module{"hardware": {Enabled: true, Options: json.RawMessage(`{"interval":"1s"}`)}, "example": {Enabled: false, Options: json.RawMessage(`{"interval":"1s"}`)}, "ai-subscriptions": {Enabled: true}}, Displays: map[string]module.Assignment{}}
 }
 func Load(path string) (Config, error) {
 	c := Default()

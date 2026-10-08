@@ -24,6 +24,13 @@ foreach ($relative in $files) {
     New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot $relative) -Destination $target
 }
+$aiFiles = @('bin/jonsbo-ai-observer.exe','bin/jonsbo-ai-bridge.exe','docs/ai-subscriptions.md','docs/ai-subscription-research.md','scripts/register-ai-browser-host.ps1','scripts/configure-claude-observer.ps1','integrations/claude/statusline.ps1','internal/aibrand/README.md')
+$aiFiles += Get-ChildItem -LiteralPath (Join-Path $projectRoot 'integrations/browser') -File | Where-Object { $_.Name -notlike '*.test.mjs' } | ForEach-Object { 'integrations/browser/' + $_.Name }
+foreach ($relative in $aiFiles) {
+    $target = Join-Path $stage $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot $relative) -Destination $target
+}
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive
 $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 Set-Content -LiteralPath ($archive + '.sha256') -Value ($hash + '  ' + [IO.Path]::GetFileName($archive)) -Encoding ascii

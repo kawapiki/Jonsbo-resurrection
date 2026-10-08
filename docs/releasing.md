@@ -7,7 +7,7 @@ The `Release` workflow runs on `v*` tags. It validates semantic version syntax a
 ## Maintainer procedure
 
 1. Update `VERSION` and add `docs/releases/<version>.md`. Run `scripts/build.ps1` and inspect `scripts/package.ps1 -Version <version>` output locally.
-2. Verify physical displays, sensor readings, tray actions, normal/elevated startup and shutdown. Automated CI does not access USB or install drivers.
+2. Verify physical displays, sensor readings, tray actions, normal/elevated startup and shutdown. Check that Windows startup points to the release being tested, then launch that registered copy with existing saved layouts, including AI widgets. A workspace build running successfully does not verify an older installed startup copy. Automated CI does not access USB or install drivers.
 3. Submit the version and release notes through a PR. After required CI passes and the owner merges it into `master`, check out the merged commit, then create and push the matching annotated tag, for example `git tag -a v0.4.0 -m "Jonsbo Resurrection v0.4.0"` and `git push origin v0.4.0`. The tag must match `VERSION`; do not push changes directly to `master`.
 4. Wait for the `Release` workflow to succeed, download the public ZIP, and verify its checksum and embedded version. Do not reuse a published version for changed binaries.
 
