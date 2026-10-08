@@ -8,27 +8,46 @@ is required and the module does not estimate billed spend.
 
 ## Detect your clients and add a widget
 
-1. Build with `scripts/build.ps1`, then start the tray app or `bin/jonsbo.exe serve`.
-2. Open **Display Studio → Manage AI usage**. The usage page checks whether each
-   native CLI is installed and signed in, and shows monitoring separately.
+1. Run the Windows release, or build with `scripts/build.ps1` and start the tray
+   app or `bin/jonsbo.exe serve`.
+2. Open **Display Studio**, choose a screen (or **Design without a display**),
+   then open **Widgets** and add **ChatGPT / Codex** or **Claude**.
+3. Select the widget. Its settings check the selected provider's native sign-in
+   and show **Connected**, **Monitoring paused**, or **Sign in needed**.
    Choose **Start monitoring** to reuse an existing subscription login. Newly
    detected accounts are not enabled automatically. Both providers require the
    official native executable on PATH; shell wrappers are unsupported.
-   **Check again** detects a newly installed CLI or a changed native login.
-3. If a subscription login is missing, sign in yourself through the native CLI:
+   **Connection & activity options → Check again** detects an installed CLI or
+   a changed native login. There is no separate AI connection page.
+4. **Sign in** or **Reconnect** appears only when the subscription login needs
+   attention. It opens instructions inside the widget settings. Sign in through
+   the native CLI:
    `codex login` or `claude auth login --claudeai`, then use **Check again**.
-   API-key authentication does not count as a subscription login. The page
-   reports unavailable usage and the required command; Jonsbo does not start a
+   API-key authentication does not count as a subscription login. Jonsbo does not start a
    provider login or maintain a second provider account.
-4. Open a screen or choose **Design without a display**. Use the provider's
-   **Add widget** action, or add an **AI subscription** widget in the editor.
-   Select compact/expanded detail and animation preference.
-   Use **Save & apply** to assign it to a connected display.
+5. Choose quota/tokens or expanded session activity, set the animation preference,
+   then use **Save & apply** to assign the layout to the selected display.
 
-The provider mark is unchanged; its surrounding connection indicator animates
-when the account is connected and fresh. Activity has a separate indicator.
+![Sign-in guidance appears inside the selected provider's widget settings](screenshots/ai-sign-in.png)
+
+![ChatGPT and Claude widgets with connection status in the selected widget's settings](screenshots/ai-widgets.png)
+
+*Screenshots use a temporary four-display demo with sample readings and quotas.*
+
+Claude's square-eyed crab walks while working, waves when waiting for input,
+and rests when idle. The ChatGPT / Codex blossom rotates or breathes with activity.
+It renders as white strokes directly on the dark card, with no white background
+box. Every animation frame is drawn in Go; no GIF or MP4 playback is used.
+Fresh local activity can animate independently of account quota monitoring.
+Stale activity cannot keep a disconnected mascot moving.
 Browser reduced-motion settings pause editor previews; switch animation off in
 the widget to pause it on a physical display.
+
+New fan widgets use 608×164 pixels. Quota values are 42 pixels, token values
+28 pixels and supporting labels at least 14 pixels in the full-width layout.
+Large token values use K/M/B abbreviations. Expanded activity needs at least
+300 pixels of height and is intended for pump displays. Missing values remain
+`--`; local and partial observations retain their labels.
 
 The module also exposes `overview` and `sessions` (640×480), plus `openai` and
 `claude` (640×180) views for direct API assignments. Normal screen rotation still
@@ -49,12 +68,13 @@ The widget retains account quota readings during an outage, marks them stale,
 and shows their age. This is the age of Jonsbo's native-client observation;
 Claude can itself answer from a cached snapshot and does not expose that
 snapshot's fetch time in the structured reply. Fresh Claude account quota has a five-minute tolerance for
-the three-minute polling interval. **Stop monitoring** removes cached account data
+the three-minute polling interval. **Pause monitoring** removes cached account data
 while keeping the native client signed in.
 Account token history remains source-dependent: OpenAI can report daily buckets;
 Claude's usage-control reply provides plan quotas, not an account token ledger.
 
-Choose **Show activity setup** to obtain merge proposals for native hooks,
+Open **Connection & activity options → Session activity setup → Show setup instructions**
+to obtain merge proposals for native hooks,
 Claude status-line forwarding and OpenTelemetry HTTP/JSON logs. The packaged
 `bin/jonsbo-ai-observer.exe` helper reads stdin and forwards only allowlisted
 metadata to the local server. Replace `jonsbo-ai-observer` in proposals with the
@@ -167,7 +187,7 @@ Legacy isolated `codex-home` directories are left untouched; Jonsbo does not cop
 their credentials. Keep the module data directory private; Windows inherits its
 parent directory's ACL.
 
-Stop monitoring detaches this observer and drops the linked account's cached data.
+Pause monitoring detaches this observer and drops the linked account's cached data.
 It does not sign out the shared native client or revoke provider consent.
 Provider-side logout/revocation remains in the native client/account controls.
 

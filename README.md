@@ -6,7 +6,7 @@ This is an experimental, community-oriented project, independent of JONSBO. Hard
 
 ## Screenshots
 
-Captured from the Windows **0.4.0-dev** configurator with a connected TF3-360SC and live hardware readings. This interface is not included in the original v0.3.0 release.
+The **v0.5.0 Display Studio** below uses a temporary four-display demo with sample sensor readings, subscription quotas and activity. The screenshots show the current interface; they do not represent a user's account usage.
 
 **Your displays** — see all four screens, their current output and connection status, alongside CPU/GPU temperatures, memory usage and free disk space. Select a screen to edit it.
 
@@ -16,9 +16,13 @@ Captured from the Windows **0.4.0-dev** configurator with a connected TF3-360SC 
 
 ![Pump layout editor showing theme previews, a CPU history chart and the selected overlay properties](docs/screenshots/layout-editor.png)
 
-**Fan layouts** — the same editor adapts to the wide fan screens, with a widget library for readings, history charts, gauges, text and storage space.
+**Fan layouts** — the editor opens the chosen CPU, GPU or memory screen's own content, with readable widget settings and a full-width preview. Switch between **On display** and **Edit layout** to compare the assigned output with your draft.
 
-![Fan layout editor with the widget library and CPU history chart settings](docs/screenshots/fan-editor.png)
+![Fan layout editor with the CPU screen and temperature widget settings](docs/screenshots/fan-editor.png)
+
+**AI activity** — add a ChatGPT / Codex blossom or Claude crab from the widget library. Animations are drawn from code. The blossom uses white strokes on the dark screen with no white box; large quota and token values remain readable on fan displays. Existing sign-in status and any needed **Sign in / Reconnect** controls live inside each widget's settings.
+
+![ChatGPT and Claude widgets with inline subscription settings](docs/screenshots/ai-widgets.png)
 
 See the [configurator guide](docs/configurator.md) for themes, widgets, backgrounds and saving layouts.
 
@@ -29,8 +33,10 @@ See the [configurator guide](docs/configurator.md) for themes, widgets, backgrou
 - Module lifecycle/status, authenticated JSON API, server-sent state updates, PNG previews, and live view assignment.
 - Example Go module with message events, a generated sparkline, and an animated progress bar; an external event-producer boilerplate.
 - Static PNG/JPEG upload, orientation correction, per-display workers, and reconnection attempts for selected serials.
+- Display Studio with themes, editable widgets, saved layouts, image/video-frame backgrounds and the selected display's current output.
+- Native Codex/Claude subscription monitoring, readable animated AI widgets, local session activity and optional browser companion feeds.
 
-The [AI subscription module](docs/ai-subscriptions.md) connects native ChatGPT/Codex and Claude accounts, adds animated provider widgets, and observes configured desktop/CLI and browser activity. Quotas, weekly tokens and current context show only what the available feeds report. Windows notification capture, persistent historical charts, full-motion video playback and a module marketplace remain unimplemented.
+The [AI subscription guide](docs/ai-subscriptions.md) explains sign-in detection, monitoring and optional activity setup. Quotas, weekly tokens and current context show only what the available feeds report; missing data stays unavailable and local/partial values are labelled. Windows notification capture, persistent historical charts, full-motion video playback and a module marketplace remain unimplemented.
 
 ## Download for Windows
 
@@ -67,7 +73,7 @@ CPU temperature requires the separately installed **signed PawnIO driver** and a
 .\scripts\stop-monitor.ps1 -Server
 ```
 
-The API listens on `127.0.0.1:8787`. On first use it creates `bin/api-token`; every route requires that bearer token. Keep the token file private and out of commits. No account login or cloud service is required. The CLI does not add startup entries; use the tray startup controls to opt in.
+The API listens on `127.0.0.1:8787`. On first use it creates `bin/api-token`; API routes require that bearer token, while the editor shell/assets are public on loopback. Keep the token file private and out of commits. Hardware monitoring needs no cloud account; optional AI widgets reuse your provider's native subscription login. The CLI does not add startup entries; use the tray startup controls to opt in.
 
 ```powershell
 $headers = @{Authorization = 'Bearer ' + (Get-Content .\bin\api-token -Raw).Trim()}
@@ -79,7 +85,7 @@ go run ./examples/event-producer -token-file bin/api-token -message 'Build compl
 
 ## Customize and extend
 
-The [local display configurator](docs/configurator.md) adds editable overlays, five preset themes, history/usage charts, storage free space, and saved image/video-frame backgrounds. Choose **Open configurator** in a build containing this feature. It is not included in the original v0.3.0 binary.
+The [local display configurator](docs/configurator.md) adds editable overlays, five preset themes, history/usage charts, storage free space, AI activity and saved image/video-frame backgrounds. Choose **Open configurator** from the tray, select a display, and use **Save & apply** when your layout is ready. Read the [v0.5.0 release notes](docs/releases/0.5.0.md) for the new features and display-preview fixes.
 
 Start with [configs/example.json](configs/example.json), then run:
 

@@ -19,7 +19,7 @@ function adaptLayout(layout, height) {
   next.overlays = (next.overlays || []).map(layer => {
     const adjusted={...layer, y:Math.round(layer.y*scale),h:Math.max(1,Math.round(layer.h*scale)),font_size:Math.round(clamp(layer.font_size*Math.min(1,scale),8,96))};
     // Keep the provider's quota/token card readable when switching aspect ratios.
-    if(layer.type==='ai-provider' && height===180 && layout.height!==180)Object.assign(adjusted,{detail:'compact',h:150});
+    if(layer.type==='ai-provider' && height===180 && layout.height!==180)Object.assign(adjusted,{detail:'compact',w:Math.max(560,adjusted.w),h:164});
     return constrainLayer(adjusted,640,height);
   });
   return next;
@@ -45,13 +45,18 @@ function aiProviderView(info = {}, options = {}) {
  const ready=info.ready===true, login=info.login || 'checking', monitoring=info.monitoring===true;
  const primaryAction=monitoring?'disconnect':ready&&login==='signed-in'?'monitor':null;
  const offline=!options.connected;
+ const loginHelp=!offline&&ready&&(login==='signed-out'||login==='api-key');
+ const install=!offline&&info.ready===false&&login==='unavailable';
+ const statusLabel=offline?'Service unavailable':install?'Client not installed':loginHelp?'Sign in needed':login==='checking'?'Checking…':login==='signed-in'?(monitoring?'Connected':'Monitoring paused'):'Could not check sign-in';
  return {
+  statusLabel,statusTone:offline?'muted':login==='signed-in'&&monitoring?'success':loginHelp||install||login==='error'?'attention':'muted',
+  signInLabel:loginHelp?(monitoring?'Reconnect':'Sign in'):null,
   cliLabel:offline?'Status unavailable':ready?'Installed':info.ready===false&&login==='unavailable'?'Not installed':login==='checking'?'Checking…':'Could not verify',
   loginLabel:offline?'Status unavailable':({'signed-in':'Signed in with subscription','signed-out':'Signed out','api-key':'API key active — subscription sign-in needed',checking:'Checking…',unavailable:'Unavailable',error:'Could not verify sign-in'})[login] || 'Could not verify sign-in',
   monitoringLabel:offline||typeof info.monitoring!=='boolean'?'Unknown':monitoring?'On':'Off',
   usageAvailable:!offline&&ready&&login==='signed-in'&&monitoring,
   primaryAction, primaryLabel:monitoring?'Stop monitoring':'Start monitoring',
-  loginHelp:!offline&&ready&&(login==='signed-out'||login==='api-key'),install:!offline&&info.ready===false&&login==='unavailable',
+  loginHelp,install,
   disabled:offline||!!options.busy
  };
 }
@@ -63,7 +68,7 @@ function withAIWidget(layout, provider, newID) {
  if(!['openai','claude'].includes(provider))throw new Error('Choose a supported provider.');
  if(layout.overlays.length>=32)throw new Error('A layout can contain up to 32 widgets.');
  const next=clone(layout),index=next.overlays.length;
- next.overlays.push(constrainLayer({id:newID,type:'ai-provider',provider,detail:'compact',animate:true,metric:'',label:'',x:20+(index%5)*16,y:20+(index%4)*16,w:360,h:150,color:'#a8c9ff',font_size:28,min:0,max:100,opacity:1},layout.width,layout.height));
+ next.overlays.push(constrainLayer({id:newID,type:'ai-provider',provider,detail:'compact',animate:true,metric:'',label:'',x:16,y:layout.height===180?8:24+(index%3)*32,w:608,h:layout.height===180?164:200,color:'#a8c9ff',font_size:28,min:0,max:100,opacity:1},layout.width,layout.height));
  return next;
 }
 function mediaPlan(width, height, duration) {
@@ -85,15 +90,65 @@ async function saveThenApply(save, isCurrent, apply) {
   if (!isCurrent()) throw new Error("The layout or selected display changed while saving. Review it and apply again.");
   await apply();
 }
+function displayFramePath(device, bindings) {
+  const assignment=device?.assignment || bindings[device?.serial];
+  return assignment?.module && assignment?.view ? '/v1/modules/'+encodeURIComponent(assignment.module)+'/views/'+encodeURIComponent(assignment.view)+'.png' : null;
+}
+async function loadDisplayPreview(device, bindings, epoch, request, current) {
+  const serial=device.serial,path=displayFramePath(device,bindings);
+  if(!path)return null;
+  const blob=await request(path,{blob:true}),state=current();
+  const present=state.devices.find(d=>d.serial===serial);
+  if(!state.connected||state.epoch!==epoch||!present||displayFramePath(present,state.bindings)!==path)return null;
+  return {blob,path,epoch};
+}
+function assignedLayout(device, assignment, newID) {
+  const height=device.kind==='fan'?180:480;
+  const layout={id:newID,name:'',width:640,height,rotation:0,background:{color:'#0c1015',asset_id:'',opacity:1},overlays:[]};
+  const add=(id,type,metric,label,x,y,w,h,font_size=28,color='#e9f1f7')=>layout.overlays.push({id,type,metric,label,x,y,w,h,font_size,color,min:0,max:100,opacity:1});
+  if(assignment?.module==='hardware' && ['summary','cpu','gpu','memory'].includes(assignment.view)){
+    const role=assignment.view;
+    layout.name=({summary:'System overview',cpu:'CPU monitor',gpu:'GPU monitor',memory:'Memory monitor'})[role];
+    if(role==='summary' && height===480){
+      add('title','text','','SYSTEM / LIVE',28,20,584,32,21);
+      for(const [i,metric,label,color] of [[0,'cpu.usage','CPU','#e6d85c'],[1,'gpu.usage','GPU','#ffae5d'],[2,'ram.usage','RAM','#8bd597']]){
+        add('value-'+i,'metric',metric,label,28,72+i*122,584,80,42,color);
+        add('bar-'+i,'bar',metric,'',28,157+i*122,584,26,14,color);
+      }
+    }else{
+      const metric=({cpu:'cpu.usage',gpu:'gpu.usage',memory:'ram.usage'})[role]||'cpu.usage';
+      const color=({cpu:'#e6d85c',gpu:'#ffae5d',memory:'#8bd597'})[role]||'#e6d85c';
+      add('title','text','',({cpu:'CPU / PROCESSOR',gpu:'GPU / GRAPHICS',memory:'RAM / SYSTEM'})[role]||'SYSTEM',26,15,600,28,21,color);
+      add('value','metric',metric,'Usage',430,45,184,94,56);
+      const secondary=({cpu:'cpu.temp',gpu:'gpu.temp',memory:'ram.free'})[role]||'cpu.temp';
+      add('detail','metric',secondary,role==='memory'?'RAM free':'Temperature',26,57,380,76,28);
+      add('usage-bar','bar',metric,'',26,143,588,28,14,color);
+    }
+    layout.overlays=layout.overlays.map(layer=>constrainLayer(layer,640,height));
+    return orientLayout(layout,assignment);
+  }
+  if(assignment?.module==='ai-subscriptions' && ['openai','claude','overview'].includes(assignment.view)){
+    layout.name=assignment.view==='claude'?'Claude activity':assignment.view==='openai'?'ChatGPT / Codex activity':'AI overview';
+    const providers=assignment.view==='overview'&&height===480?['openai','claude']:[assignment.view==='claude'?'claude':'openai'];
+    for(const [i,provider] of providers.entries()){
+      add('provider-'+i,'ai-provider','','',0,i*240,640,providers.length===2?232:height);
+      Object.assign(layout.overlays[i],{provider,detail:providers.length===2||height===180?'compact':'expanded',animate:true});
+    }
+    return orientLayout(layout,assignment);
+  }
+  return null;
+}
 function layoutForDisplay(device, layouts, bindings, newID) {
   const assignment=device.assignment || bindings[device.serial];
   const bound=assignment?.module==='configurator' && layouts.find(l=>l.id===assignment.view);
   if(bound)return orientLayout(bound,assignment);
+  const assigned=assignedLayout(device,assignment,newID);
+  if(assigned)return assigned;
   const base=layouts.find(l=>l.id===(device.kind==='fan'?'default-fan':'default-pump'));
   if(!base)throw new Error('Default layout unavailable. Reconnect to the service.');
   return orientLayout({...clone(base),id:newID,name:(device.kind==='fan'?'Fan':'Pump')+' '+device.serial.slice(-4)+' custom'},assignment);
 }
-if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken, saveThenApply, layoutForDisplay, aiPreferences, aiProviderView, aiActionAllowed, withAIWidget};
+if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken, saveThenApply, layoutForDisplay, displayFramePath, loadDisplayPreview, aiPreferences, aiProviderView, aiActionAllowed, withAIWidget};
 
 function startStudio() {
   const $ = id => document.getElementById(id);
@@ -102,7 +157,8 @@ function startStudio() {
   const state = {layouts: [], themes: [], themeCache: {}, themeHeight: 0, themeRequestHeight: 0, assets: [], metrics: [], history: [], devices: [], bindings: {}, draft: null, selected: "", serial: "", height: 480, dirty: false, revision: 0, connected: false, initialized: false, pollTimer: null, polling: false, previewing: false, importing: null, background: null, backgroundID: "", backgroundPending: "", renderURL: "", epoch: 0};
   const canvas = $("canvas"), ctx = canvas.getContext("2d");
   const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)'), aiImages=new Map();
-  let aiRefreshing=false, aiStatusTime=0, aiActionBusy=false, aiSetupBusy=false, aiStatusRevision=0, aiProviders=[];
+  let aiRefreshing=false, aiStatusTime=0, aiActionBusy=false, aiSetupBusy=false, aiStatusRevision=0, aiProviders=[], aiPanelProvider='', aiHelpOpen=false;
+  const aiMessages=new Map();
   reducedMotion.addEventListener('change',()=>{for(const image of aiImages.values())image.close();aiImages.clear();refreshAIWidgets();});
   const well=document.querySelector('.canvas-well'), frame=document.querySelector('.canvas-frame');
   function fitCanvas(){frame.style.width=Math.max(40,Math.min(656,well.clientWidth-32,(well.clientHeight-32)*canvas.width/canvas.height))+'px';}
@@ -113,12 +169,26 @@ function startStudio() {
   const selected = () => state.draft?.overlays.find(layer => layer.id === state.selected);
   let applying = false;
   let page='home', deviceSignature='', previewBusy=false;
+  let canvasView='edit',liveRequest=0,liveURL='',liveKey='',liveBusyKey='',aiTimer;
   const deviceImages=new Map();
-  function displayName(device){return (device.kind==='fan'?'Fan':'Pump')+' · '+device.serial.slice(-6);}
+  function displayName(device){const a=device.assignment || state.bindings[device.serial];const content=a?.module==='hardware'?({cpu:'CPU',gpu:'GPU',memory:'Memory',summary:'System overview'})[a.view]:a?.module==='ai-subscriptions'?({claude:'Claude',openai:'ChatGPT',overview:'AI overview',sessions:'AI sessions'})[a.view]:null;return (device.kind==='fan'?'Fan':'Pump')+(content?' · '+content:'')+' · '+device.serial.slice(-4);}
   function showPage(next){page=next;document.body.dataset.page=next;requestAnimationFrame(fitCanvas);updateActions();}
-  function openAIUsage(){showPage('ai');renderAIUsage();refreshAIStatus(true);$('ai-usage-title').focus();}
-  $('ai-back-displays').addEventListener('click',()=>{showPage('home');renderDevices();refreshDisplayPreviews();});
-  $('ai-back-editor').addEventListener('click',()=>{showPage('editor');renderDevices();});
+  function setCanvasView(view){canvasView=view;canvas.hidden=view==='live';$('current-output').hidden=view!=='live';document.querySelectorAll('[data-canvas-view]').forEach(button=>{button.setAttribute('aria-pressed',String(button.dataset.canvasView===view));button.disabled=button.dataset.canvasView==='live'&&!state.serial;});$('canvas-view-note').textContent=view==='live'?'Live output from the selected display':'Changes appear after Save & apply';$('selection-note').textContent=view==='live'?'Choose Edit layout to customize this screen.':'Select a widget to edit it.';requestAnimationFrame(fitCanvas);if(view==='live')refreshCurrentDisplay();}
+  document.querySelectorAll('[data-canvas-view]').forEach(button=>button.addEventListener('click',()=>setCanvasView(button.dataset.canvasView)));
+  $('nav-displays').addEventListener('click',()=>{showPage('home');renderDevices();refreshDisplayPreviews();});
+  async function refreshCurrentDisplay(){
+    const device=state.devices.find(d=>d.serial===state.serial),path=displayFramePath(device,state.bindings);
+    const key=state.epoch+'|'+state.serial+'|'+path;
+    if(liveKey!==key){liveKey=key;$('current-image').hidden=true;$('current-output-note').hidden=false;$('current-output-note').textContent=path?'Loading this display…':'No live output is available for this display.';}
+    if(!path||!state.connected||liveBusyKey===key)return;
+    const requestID=++liveRequest;liveBusyKey=key;
+    try{
+      const blob=await request(path,{blob:true});
+      if(requestID!==liveRequest||liveKey!==key||!state.connected)return;
+      const url=URL.createObjectURL(blob),old=liveURL;liveURL=url;$('current-image').src=url;$('current-image').hidden=false;$('current-output-note').hidden=true;if(old)URL.revokeObjectURL(old);
+    }catch(error){if(requestID===liveRequest){$('current-image').hidden=true;$('current-output-note').hidden=false;$('current-output-note').textContent='Live output unavailable. '+error.message;}}
+    finally{if(liveBusyKey===key)liveBusyKey='';}
+  }
   $('back-displays').addEventListener('click',()=>{showPage('home');renderDevices();refreshDisplayPreviews();});
   $('resume-design').addEventListener('click',()=>{showPage('editor');renderDevices();});
   $('design-offline').addEventListener('click',()=>{if(!state.serial&&state.dirty){showPage('editor');return;}if(!allowReplace())return;state.serial='';setDraft(blank(480));showPage('editor');renderDevices();});
@@ -126,7 +196,7 @@ function startStudio() {
     document.querySelectorAll('[data-library]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.library===name)));
     document.querySelectorAll('[data-library-panel]').forEach(panel=>panel.hidden=panel.dataset.libraryPanel!==name);
   }
-  document.querySelectorAll('[data-library]').forEach(button=>button.addEventListener('click',()=>button.dataset.library==='ai'?openAIUsage():showLibrary(button.dataset.library)));
+  document.querySelectorAll('[data-library]').forEach(button=>button.addEventListener('click',()=>showLibrary(button.dataset.library)));
   document.querySelectorAll('[data-widget]').forEach(button=>button.addEventListener('click',()=>{$('add-type').value=button.dataset.widget;$('add-layer').click();}));
   $('browse-widgets').addEventListener('click',()=>showLibrary('widgets'));
   $('duplicate-layout').addEventListener('click',()=>{const copy=clone(state.draft);copy.id=id('layout');copy.name+=' copy';setDraft(copy,true);status('Independent copy created. Your original layout is unchanged.');});
@@ -134,7 +204,8 @@ function startStudio() {
   function connected(yes) {
     state.connected = yes; $("connection").textContent = yes ? "Local service connected" : token ? "Local service disconnected" : "Connection needed";
     $("connection-dot").className = "dot " + (yes ? "live" : "error"); updateActions();
-    renderAIUsage();
+    if(!yes){liveRequest++;$('current-image').hidden=true;$('current-output-note').hidden=false;$('current-output-note').textContent='Display service disconnected. Reconnect to see live output.';}
+    renderAIConnection();
   }
   async function request(path, options = {}) {
     const controller = new AbortController(), external = options.signal;
@@ -166,7 +237,7 @@ function startStudio() {
     $("preview-button").disabled = !state.connected || !state.draft || state.previewing;
     $("draft-state").textContent = state.dirty ? "Unsaved changes" : state.layouts.some(item => item.id === state.draft?.id) ? "Saved" : "New layout";
     $('resume-design').hidden=!state.dirty;
-    document.querySelectorAll('[data-ai-widget]').forEach(button=>button.disabled=!state.draft||state.draft.overlays.length>=32);
+    document.querySelectorAll('[data-ai-widget]').forEach(button=>{button.disabled=!state.draft||state.draft.overlays.length>=32;button.title=!device?'Choose a display or open an offline design first':'Add to '+displayName(device);});
   }
   function changed() { state.dirty = true; state.revision++; $("render-state").textContent = "Draft changed"; updateActions(); draw(); }
   function allowReplace() { return !state.dirty || window.confirm("Discard the unsaved changes in this layout?"); }
@@ -178,21 +249,26 @@ function startStudio() {
     $("layout-name").value = layout.name; $("rotation").value = String(layout.rotation || 0);
     $("background-color").value = layout.background.color; $("background-opacity").value = layout.background.opacity;
     $("canvas-size").textContent = layout.width + " × " + layout.height + " px";
+    $('editor-format').textContent=layout.height===180?'Fan · 640 × 180':'Pump · 640 × 480';
     document.querySelectorAll("[data-height]").forEach(button=>button.classList.toggle("active", Number(button.dataset.height)===state.height));
     $("saved-layout").value = state.layouts.some(item => item.id === layout.id) ? layout.id : "";
     $("render-state").textContent = "Not rendered"; $("render-image").hidden = true;
     renderAssets(); renderLayers(); renderProperties(); updateActions(); loadBackground(); draw(); refreshThemes();
+    setCanvasView('edit');refreshAIWidgets();
   }
   function element(tag, className, text) { const node=document.createElement(tag); if(className)node.className=className; if(text!==undefined)node.textContent=text; return node; }
   function renderDevices() {
     const list = $("devices"); list.replaceChildren(); $("device-count").textContent = state.devices.length;
-    $("device-note").textContent = state.serial ? "Editing " + (state.devices.find(d=>d.serial===state.serial)?.kind || "display") + " · " + state.serial : "Preview workspace. Choose a connected display above to send your design.";
+    $("device-note").textContent = state.serial ? "Only this selected display receives your layout when you Save & apply." : "Offline design. Select a display above when you are ready to apply.";
     const selectedDevice=state.devices.find(d=>d.serial===state.serial);
-    $('selected-display').textContent=selectedDevice?displayName(selectedDevice)+' — '+selectedDevice.serial:'Offline layout preview';
+    document.querySelector('.formats').hidden=!!selectedDevice;
+    const shared=state.devices.filter(d=>d.serial!==state.serial&&(d.assignment || state.bindings[d.serial])?.module==='configurator'&&(d.assignment || state.bindings[d.serial]).view===state.draft?.id);
+    if(shared.length)$('device-note').textContent='This layout is shared by '+(shared.length+1)+' displays. Saving updates all of them. Duplicate it to customize only this screen.';
+    $('selected-display').textContent=selectedDevice?displayName(selectedDevice):'Offline layout preview';
     $('overview-count').textContent=state.connected?state.devices.length+' detected · '+state.devices.filter(d=>d.status==='live').length+' live':'Display service disconnected';
     $('overview-empty').hidden=state.connected&&state.devices.length>0;
     $('overview-empty').textContent=!state.connected?'Connect to the local display service to detect screens and read hardware values.':'No displays are exposed by this service. Start the Windows app with display monitoring enabled, then reconnect. Offline layout design is available below.';
-    const signature=JSON.stringify(state.devices.map(d=>[d.serial,d.kind,d.assignment,d.status,d.error,state.connected]));
+    const signature=JSON.stringify(state.devices.map(d=>[d.serial,d.kind,d.assignment,displayFramePath(d,state.bindings),d.status,d.error,state.connected,state.epoch]));
     if(signature!==deviceSignature){
       deviceSignature=signature;
       const cards=$('display-cards');cards.replaceChildren();
@@ -201,12 +277,15 @@ function startStudio() {
         const card=element('button','display-card');card.disabled=!state.connected;
         card.setAttribute('aria-label','Edit '+displayName(device));
         const screen=element('div','display-card-screen '+device.kind),img=element('img');img.alt='Current layout on '+displayName(device);img.dataset.displaySerial=device.serial;
-        if(deviceImages.has(device.serial))img.src=deviceImages.get(device.serial);else img.hidden=true;
+        const cached=deviceImages.get(device.serial);
+        if(cached&&cached.epoch===state.epoch&&cached.path===displayFramePath(device,state.bindings))img.src=cached.url;
+        else {img.hidden=true;if(cached){URL.revokeObjectURL(cached.url);deviceImages.delete(device.serial);}}
         screen.append(img,element('span','preview-label','Current display output'));
-        card.append(screen,element('strong','',displayName(device)),element('span','card-serial',device.serial),element('span','card-status',state.connected?(device.error || device.status || 'Detected'):'Service disconnected'),element('span','card-assignment','Showing '+(device.assignment?.module || 'unassigned')+' / '+(device.assignment?.view || 'none')),element('span','card-edit','Edit display'));
+        const a=device.assignment || state.bindings[device.serial];const layout=state.layouts.find(l=>a?.module==='configurator'&&l.id===a.view);
+        card.append(screen,element('strong','',displayName(device)),element('span','card-serial',device.serial),element('span','card-status',state.connected?(device.error || (device.status==='live'?'Connected · Live':device.status==='waiting'?'Connecting…':device.status || 'Detected')):'Service disconnected'),element('span','card-assignment',layout?'Layout: '+layout.name:'Showing '+(({cpu:'CPU monitor',gpu:'GPU monitor',memory:'Memory monitor',summary:'System overview',openai:'ChatGPT / Codex',claude:'Claude activity',overview:'AI overview',sessions:'AI sessions'})[a?.view] || 'Ready to customize')),element('span','card-edit','Open display studio'));
         card.addEventListener('click',()=>selectDevice(device));cards.append(card);
       }
-      for(const [serial,url] of deviceImages){if(!state.devices.some(d=>d.serial===serial)){URL.revokeObjectURL(url);deviceImages.delete(serial);}}
+      for(const [serial,entry] of deviceImages){if(!state.devices.some(d=>d.serial===serial)){URL.revokeObjectURL(entry.url);deviceImages.delete(serial);}}
     }
     for (const device of state.devices) {
       const button=element("button", "device" + (state.serial===device.serial?" active":""));
@@ -216,6 +295,7 @@ function startStudio() {
       button.addEventListener("click",()=>selectDevice(device)); list.append(button);
     }
     updateActions();
+    document.querySelector('[data-canvas-view="live"]').disabled=!selectedDevice;
   }
   function selectDevice(device) {
     if(state.serial===device.serial&&state.draft){showPage('editor');renderDevices();return;}
@@ -223,17 +303,21 @@ function startStudio() {
     const layout=layoutForDisplay(device,state.layouts,state.bindings,id('layout'));
     state.serial = device.serial;
     setDraft(layout);showPage('editor');
+    const assignment=device.assignment || state.bindings[device.serial];
+    setCanvasView(assignment?.module==='configurator'?'edit':'live');
+    refreshCurrentDisplay();
     renderDevices(); renderThemes(); status(device.assignment?.module==='configurator'?'Editing the saved layout for '+displayName(device)+'.':'Currently showing the '+(device.assignment?.module || 'default')+' dashboard. Customize this draft, then Save & apply to replace it on '+displayName(device)+'.');
   }
   async function refreshDisplayPreviews(){
     if(previewBusy||page!=='home'||!state.connected)return;previewBusy=true;const epoch=state.epoch;
     try{for(const device of state.devices){
       if(page!=='home'||epoch!==state.epoch)break;
-      const a=device.assignment;if(!a?.module||!a?.view)continue;
-      try{const blob=await request('/v1/modules/'+encodeURIComponent(a.module)+'/views/'+encodeURIComponent(a.view)+'.png',{blob:true});
+      try{const frame=await loadDisplayPreview(device,state.bindings,epoch,request,()=>state);
         if(epoch!==state.epoch||!state.connected)break;
+        const present=state.devices.find(display=>display.serial===device.serial);
+        if(!frame||!present||displayFramePath(present,state.bindings)!==frame.path)continue;
         const img=[...document.querySelectorAll('[data-display-serial]')].find(el=>el.dataset.displaySerial===device.serial);
-        if(img){const url=URL.createObjectURL(blob),old=deviceImages.get(device.serial);deviceImages.set(device.serial,url);img.src=url;img.hidden=false;if(old)URL.revokeObjectURL(old);}
+        if(img){const url=URL.createObjectURL(frame.blob),old=deviceImages.get(device.serial);deviceImages.set(device.serial,{url,path:frame.path,epoch});img.src=url;img.hidden=false;if(old)URL.revokeObjectURL(old.url);}
       }catch(_){/* Keep device status visible even if its current renderer is unavailable. */}
     }}finally{previewBusy=false;}
   }
@@ -286,7 +370,7 @@ function startStudio() {
       item.append(element("small","",metric.label),element("strong","",value===null?"—":Number(value.toFixed(1)).toString()),element("span","",metric.unit));list.append(item);
     }
     $("reading-time").textContent=state.metrics.some(item=>metricValue(state.metrics,item.id)!==null)?"Updated "+new Date().toLocaleTimeString():"Sensors unavailable";
-    $('overview-metrics').replaceChildren(...[...list.children].map(node=>node.cloneNode(true)));
+    $('overview-metrics').replaceChildren(...[...list.children].filter((node,index)=>!state.metrics[index].id.startsWith('ai.')).map(node=>node.cloneNode(true)));
     $('overview-reading-time').textContent=$('reading-time').textContent;
     const select=$("prop-metric"), previous=select.value; select.replaceChildren(); state.metrics.forEach(metric=>select.add(new Option(metric.label+" ("+metric.unit+")",metric.id))); select.value=selected()?.metric || previous;
   }
@@ -302,7 +386,7 @@ function startStudio() {
     $("add-layer").disabled=state.draft.overlays.length>=32;
     document.querySelectorAll('[data-widget]').forEach(button=>button.disabled=state.draft.overlays.length>=32);
   }
-  function selectLayer(layerID) {state.selected=layerID;renderLayers();renderProperties();draw();}
+  function selectLayer(layerID) {setCanvasView('edit');state.selected=layerID;renderLayers();renderProperties();draw();}
   const propNames=["label","metric","x","y","w","h","font_size","color","min","max","opacity"];
   function renderProperties() {
     const layer=selected();$("properties").hidden=!layer;$("layer-tools").hidden=!layer;
@@ -317,6 +401,7 @@ function startStudio() {
     $('label-field').hidden=layer.type==='ai-provider';$('style-fields').hidden=layer.type==='ai-provider';
     const prefs=aiPreferences(layer);$('prop-provider').value=prefs.provider;$('prop-detail').value=prefs.detail;$('prop-animate').checked=prefs.animate;
     $('ai-motion-note').hidden=!reducedMotion.matches;
+    renderAIConnection();
     $("prop-x").max=state.draft.width-layer.w;$("prop-y").max=state.draft.height-layer.h;$("prop-w").max=state.draft.width;$("prop-h").max=state.draft.height;
     const index=state.draft.overlays.indexOf(layer);$("layer-down").disabled=index===0;$("layer-up").disabled=index===state.draft.overlays.length-1;
   }
@@ -368,60 +453,77 @@ function startStudio() {
       }
       for(const [key,image] of aiImages)if(!keys.has(key)){image.close();aiImages.delete(key);}
       draw();
-    }finally{aiRefreshing=false;}
+    }finally{aiRefreshing=false;clearTimeout(aiTimer);if(page==='editor'&&canvasView==='edit'&&state.connected&&state.draft?.overlays.some(l=>l.type==='ai-provider'&&aiPreferences(l,reducedMotion.matches).animate))aiTimer=setTimeout(refreshAIWidgets,400);}
   }
-  function renderAIUsage(){
-    for(const provider of ['openai','claude']){
-      const info=aiProviders.find(p=>p.id===provider)||{}, view=aiProviderView(info,{connected:state.connected,busy:aiActionBusy});
-      for(const row of ['cli','login','monitoring'])$('ai-'+provider+'-'+row).textContent=view[row+'Label'];
-      $('ai-'+provider+'-install').hidden=!view.install;
-      $('ai-'+provider+'-login-help').hidden=!view.loginHelp;
-      $('ai-'+provider+'-status').textContent=!state.connected?'Connect to the local display service to check native client status.':info.message || (view.primaryAction==='monitor'?'Ready to use your existing subscription login.':info.monitoring?'Monitoring subscription usage.':'Check native client status to see whether usage is available.');
-      document.querySelectorAll('[data-ai-provider="'+provider+'"]').forEach(button=>{
-        if(button.hasAttribute('data-ai-primary')){button.hidden=!view.primaryAction;button.dataset.aiAction=view.primaryAction||'monitor';button.textContent=view.primaryLabel;}
-        button.disabled=!aiActionAllowed(info,button.dataset.aiAction,{connected:state.connected,busy:aiActionBusy});
-      });
-      for(const metric of ['weekly','tokens']){
-        const value=view.usageAvailable?metricValue(state.metrics,'ai.'+provider+'.'+metric):null;
-        $('ai-'+provider+'-'+(metric==='weekly'?'quota':'tokens')).textContent=value===null?'--':metric==='weekly'?Math.round(value)+'%':new Intl.NumberFormat().format(value);
-      }
-      const tokenMetric=state.metrics.find(m=>m.id==='ai.'+provider+'.tokens');$('ai-'+provider+'-tokens-label').textContent=tokenMetric?.label || 'Tokens this week';
+  function renderAIConnection(){
+    const layer=selected();
+    if(layer?.type!=='ai-provider')return;
+    const provider=aiPreferences(layer).provider,info=aiProviders.find(p=>p.id===provider)||{};
+    const view=aiProviderView(info,{connected:state.connected,busy:aiActionBusy});
+    if(!view.loginHelp)aiHelpOpen=false;
+    if(aiPanelProvider!==provider){
+      aiPanelProvider=provider;aiHelpOpen=false;$('ai-connection-options').open=false;
+      $('ai-setup-panel').hidden=true;$('ai-setup-content').textContent='';
     }
+    const badge=$('ai-connection-status');badge.textContent=view.statusLabel;badge.dataset.tone=view.statusTone;
+    const client=provider==='claude'?'Claude Code':'Codex';
+    $('ai-connection-note').textContent=!state.connected?'Connect to the display service to check your sign-in.':view.install?'Install '+client+' to use your subscription.':view.loginHelp?'Your '+client+' subscription needs a sign-in.':info.login==='error'?'Unable to verify sign-in. Open connection options to check again.':info.login==='signed-in'?(info.monitoring?'Uses your existing '+client+' sign-in.':'Your '+client+' sign-in is ready. Start monitoring to show usage.'):'Your existing '+client+' sign-in is checked automatically.';
+    $('ai-sign-in').hidden=!view.signInLabel;$('ai-sign-in').textContent=view.signInLabel||'Sign in';$('ai-sign-in').disabled=view.disabled;
+    const helpVisible=view.loginHelp&&aiHelpOpen;
+    $('ai-sign-in').setAttribute('aria-expanded',String(helpVisible));$('ai-sign-in-help').hidden=!helpVisible;
+    document.querySelectorAll('[data-ai-help-provider]').forEach(help=>help.hidden=help.dataset.aiHelpProvider!==provider);
+    $('ai-client-install').hidden=!view.install;
+    $('ai-client-install-note').textContent='Install '+client+', then check your sign-in again.';
+    $('ai-client-guide').href=provider==='claude'?'https://code.claude.com/docs/en/setup':'https://learn.chatgpt.com/docs/codex/cli';
+    $('ai-client-guide').textContent=client+' installation guide';
+    $('ai-client-status').textContent=view.cliLabel;$('ai-login-status').textContent=view.loginLabel;$('ai-monitoring-status').textContent=view.monitoringLabel;
+    $('ai-monitor').hidden=view.primaryAction!=='monitor';$('ai-pause').hidden=info.monitoring!==true;
+    document.querySelectorAll('[data-ai-action]').forEach(button=>{
+      button.dataset.aiProvider=provider;
+      button.disabled=!aiActionAllowed(info,button.dataset.aiAction,{connected:state.connected,busy:aiActionBusy});
+    });
+    $('ai-message').textContent=aiMessages.get(provider)||'';
     $('ai-setup').disabled=!state.connected||aiActionBusy||aiSetupBusy;
-    updateActions();
   }
+  $('ai-sign-in').addEventListener('click',()=>{aiHelpOpen=!aiHelpOpen;renderAIConnection();});
   async function refreshAIStatus(force=false){
     if(!state.connected || (!force && (aiActionBusy||Date.now()-aiStatusTime<5000)))return;
     aiStatusTime=Date.now();const epoch=state.epoch,revision=++aiStatusRevision;
     try{const data=await request('/v1/ai/status');
       if(epoch!==state.epoch||revision!==aiStatusRevision||!state.connected)return;
-      aiProviders=data.providers||[];renderAIUsage();
-    }catch(error){if(epoch===state.epoch&&revision===aiStatusRevision){aiProviders=['openai','claude'].map(id=>({...aiProviders.find(p=>p.id===id),id,login:'error',message:'Could not check usage status. '+error.message}));renderAIUsage();}}
+      aiProviders=data.providers||[];renderAIConnection();
+    }catch(error){if(epoch===state.epoch&&revision===aiStatusRevision){aiProviders=['openai','claude'].map(id=>({...aiProviders.find(p=>p.id===id),id,login:'error',message:'Could not check usage status. '+error.message}));renderAIConnection();}}
   }
   document.querySelectorAll('[data-ai-action]').forEach(button=>button.addEventListener('click',async()=>{
     const provider=button.dataset.aiProvider, action=button.dataset.aiAction, epoch=state.epoch;
     if(!aiActionAllowed(aiProviders.find(p=>p.id===provider),action,{connected:state.connected,busy:aiActionBusy}))return;
-    aiActionBusy=true;aiStatusRevision++;renderAIUsage();
-    $('ai-message').textContent=action==='check'?'Checking native client sign-in…':action==='monitor'?'Starting monitoring…':'Stopping monitoring…';
-    try{const result=await request('/v1/ai/providers/'+provider+'/'+action,{method:'POST',body:'{}',timeout:60000});if(epoch!==state.epoch||!state.connected)return;
-      $('ai-message').textContent=result?.message || (action==='monitor'?'Monitoring started with your existing native sign-in.':action==='disconnect'?'Monitoring stopped. Your native sign-in is kept.':'Native client status checked.');
+    aiActionBusy=true;aiStatusRevision++;renderAIConnection();
+    aiMessages.set(provider,action==='check'?'Checking your sign-in…':action==='monitor'?'Starting monitoring…':'Pausing monitoring…');renderAIConnection();
+    try{await request('/v1/ai/providers/'+provider+'/'+action,{method:'POST',body:'{}',timeout:60000});if(epoch!==state.epoch||!state.connected)return;
+      aiMessages.set(provider,action==='monitor'?'Monitoring started with your existing sign-in.':action==='disconnect'?'Monitoring paused. Your client stays signed in.':'Sign-in checked.');
       await refreshAIStatus(true);await refreshAIWidgets();
-    }catch(error){if(epoch===state.epoch){$('ai-message').textContent=error.message;aiProviders=aiProviders.map(info=>info.id===provider?{...info,login:action==='disconnect'?info.login:'error',message:error.message}:info);}}
-    finally{aiActionBusy=false;renderAIUsage();}
+    }catch(error){if(epoch===state.epoch){aiMessages.set(provider,error.message);aiProviders=aiProviders.map(info=>info.id===provider?{...info,login:action==='disconnect'?info.login:'error',message:error.message}:info);}}
+    finally{aiActionBusy=false;renderAIConnection();}
   }));
   $('ai-setup').addEventListener('click',async()=>{
-    if(!state.connected||aiActionBusy||aiSetupBusy)return;const epoch=state.epoch;aiSetupBusy=true;
+    if(!state.connected||aiActionBusy||aiSetupBusy)return;const epoch=state.epoch,provider=aiPanelProvider;aiSetupBusy=true;
     $('ai-setup').disabled=true;
-    try{const setup=await request('/v1/ai/setup');if(epoch!==state.epoch||!state.connected)return;$('ai-setup-steps').replaceChildren(...(setup.instructions||[]).map(instruction=>element('li','',instruction)));const {instructions,...settings}=setup;$('ai-setup-content').textContent=JSON.stringify(settings,null,2);$('ai-setup-panel').hidden=false;}
-    catch(error){if(epoch===state.epoch)$('ai-message').textContent=error.message;}finally{aiSetupBusy=false;$('ai-setup').disabled=!state.connected||aiActionBusy;}
+    try{
+      const setup=await request('/v1/ai/setup');
+      if(epoch!==state.epoch||!state.connected||selected()?.type!=='ai-provider'||aiPreferences(selected()).provider!==provider)return;
+      $('ai-setup-steps').replaceChildren(...(setup.instructions||[]).map(instruction=>element('li','',instruction)));
+      const keys=provider==='claude'?['observer_token_file','claude_settings','claude_otel_env']:['observer_token_file','codex_hooks','codex_otel_toml'];
+      const settings=Object.fromEntries(keys.filter(key=>key in setup).map(key=>[key,setup[key]]));
+      $('ai-setup-content').textContent=JSON.stringify(settings,null,2);$('ai-setup-panel').hidden=false;
+    }
+    catch(error){if(epoch===state.epoch)aiMessages.set(provider,error.message);}finally{aiSetupBusy=false;renderAIConnection();}
   });
-  $('ai-manage').addEventListener('click',openAIUsage);
   function addAIWidget(provider){
-    try{const next=withAIWidget(state.draft,provider,id('layer'));state.draft=next;state.selected=next.overlays[next.overlays.length-1].id;changed();renderLayers();renderProperties();refreshAIWidgets();return true;}
+    try{setCanvasView('edit');const next=withAIWidget(state.draft,provider,id('layer'));state.draft=next;state.selected=next.overlays[next.overlays.length-1].id;changed();renderLayers();renderProperties();refreshAIWidgets();return true;}
     catch(error){status(error.message,true);return false;}
   }
   document.querySelectorAll('[data-ai-widget]').forEach(button=>button.addEventListener('click',()=>{showPage('editor');showLibrary('widgets');if(addAIWidget(button.dataset.aiWidget))status('Provider widget added to your current layout. Save & apply when ready.');}));
-  for(const key of ['provider','detail','animate'])$('prop-'+key).addEventListener('change',event=>{const layer=selected();if(layer?.type!=='ai-provider')return;layer[key]=key==='animate'?event.target.checked:event.target.value;if(key==='detail'&&layer.detail==='expanded'&&state.height===480){layer.h=Math.min(300,state.height-layer.y);renderProperties();}changed();renderLayers();refreshAIWidgets();});
+  for(const key of ['provider','detail','animate'])$('prop-'+key).addEventListener('change',event=>{const layer=selected();if(layer?.type!=='ai-provider')return;layer[key]=key==='animate'?event.target.checked:event.target.value;if(key==='detail'&&layer.detail==='expanded'&&state.height===480){layer.h=Math.min(300,state.height-layer.y);renderProperties();}changed();renderLayers();renderAIConnection();refreshAIWidgets();});
   async function poll() {
     clearTimeout(state.pollTimer);if(state.polling||!token)return;state.polling=true;const epoch=state.epoch,requestedHeight=state.height;
     try {
@@ -435,10 +537,11 @@ function startStudio() {
         state.initialized=true;renderSaved();
         status(state.devices.length?'Choose a display to edit its layout.':'No displays detected by this service. Check that display monitoring is running.');
       }
-      if(state.serial&&!state.devices.some(device=>device.serial===state.serial)){state.serial="";status("Display disconnected. Your layout is still here; reconnect the display to apply it.",true);}
+      if(state.serial&&!state.devices.some(device=>device.serial===state.serial)){state.serial="";setCanvasView('edit');status("Display disconnected. Your layout is still here; reconnect the display to apply it.",true);}
       renderDevices();renderSaved();renderAssets();renderMetrics();draw();
       refreshAIStatus();refreshAIWidgets();
       if(page==='home')await refreshDisplayPreviews();
+      if(page==='editor'&&canvasView==='live')refreshCurrentDisplay();
       if($("render-panel").open&&!state.dirty)await renderPreview(true);
     } catch(error) {if(epoch===state.epoch){connected(false);state.metrics=state.metrics.map(m=>({...m,value:null}));renderMetrics();renderDevices();draw();status(error.message || "Could not reach the local service. Keep it running and try again.",true);}}
     finally {state.polling=false;if(token)state.pollTimer=setTimeout(poll,state.connected?1000:5000);}
@@ -463,7 +566,7 @@ function startStudio() {
     }catch(error){status(error.message,true);if(propagate===true)throw error;}finally{updateActions();}
   }
   $("auth-toggle").addEventListener("click",()=>{$("auth").hidden=!$("auth").hidden;if(!$("auth").hidden)$("token").focus();});
-  function clearAIStatus(){aiProviders=[];aiStatusTime=0;aiStatusRevision++;$('ai-message').textContent='';$('ai-setup-panel').hidden=true;$('ai-setup-content').textContent='';}
+  function clearAIStatus(){aiProviders=[];aiMessages.clear();aiHelpOpen=false;aiStatusTime=0;aiStatusRevision++;$('ai-message').textContent='';$('ai-setup-panel').hidden=true;$('ai-setup-content').textContent='';}
   $("auth-form").addEventListener("submit",event=>{event.preventDefault();token=$("token").value.trim();if(!token)return;state.epoch++;clearAIStatus();try{tokenStorage.setItem("jonsbo-token",token);}catch(_){}$("token").value="";state.initialized=false;poll();});
   $("forget-token").addEventListener("click",()=>{token="";state.epoch++;clearAIStatus();try{tokenStorage.removeItem("jonsbo-token");}catch(_){}clearTimeout(state.pollTimer);connected(false);state.metrics=state.metrics.map(m=>({...m,value:null}));renderMetrics();renderDevices();status("Token forgotten in this tab. Paste a token to reconnect.");});
   document.querySelectorAll("[data-height]").forEach(button=>button.addEventListener("click",()=>{const height=Number(button.dataset.height);state.serial="";if(height!==state.height||state.draft.rotation!==(height===180?90:0))setDraft(orientLayout(adaptLayout(state.draft,height)),true);renderDevices();renderThemes();status("Virtual "+(height===180?"fan":"pump")+" preview. Select a connected display to apply.");}));
@@ -488,7 +591,7 @@ function startStudio() {
   });
   for(const key of ["x","y","w","h","font_size"])$("prop-"+key).addEventListener("change",renderProperties);
   $("add-layer").addEventListener("click",()=>{
-    if(state.draft.overlays.length>=32)return;const type=$("add-type").value,index=state.draft.overlays.length;
+    if(state.draft.overlays.length>=32)return;setCanvasView('edit');const type=$("add-type").value,index=state.draft.overlays.length;
     if(type==='ai-provider'){addAIWidget('openai');return;}
     const layer={id:id("layer"),type,metric:"cpu.usage",label:type==="text"?"Your text":"CPU usage",x:20+(index%5)*16,y:20+(index%4)*16,w:type==="line"?280:190,h:type==="pie"?160:type==="text"?48:90,color:"#a8c9ff",font_size:28,min:0,max:100,opacity:1};
     constrainLayer(layer,640,state.height);state.draft.overlays.push(layer);state.selected=layer.id;changed();renderLayers();renderProperties();
@@ -507,7 +610,7 @@ function startStudio() {
     if($("apply-button").disabled)return;
     const revision=state.revision,serial=state.serial,layout=clone(state.draft);
     applying=true;updateActions();
-    try{await saveThenApply(()=>saveLayout(true),()=>revision===state.revision&&serial===state.serial,()=>request("/v1/configurator/apply",{method:"POST",body:JSON.stringify({serial,layout_id:layout.id,rotation:layout.rotation})}));status("Saved and applied to "+serial+". You can close the editor.");}
+    try{await saveThenApply(()=>saveLayout(true),()=>revision===state.revision&&serial===state.serial,()=>request("/v1/configurator/apply",{method:"POST",body:JSON.stringify({serial,layout_id:layout.id,rotation:layout.rotation})}));const a={module:'configurator',view:layout.id,rotation:layout.rotation};state.bindings[serial]=a;const device=state.devices.find(d=>d.serial===serial);if(device)device.assignment=a;renderDevices();refreshCurrentDisplay();status("Saved and applied to "+serial+". You can close the editor.");}
     catch(error){status(error.message,true);}finally{applying=false;updateActions();}
   });
   function waitMedia(target,event,signal,action,timeout=12000){return new Promise((resolve,reject)=>{let timer;const cleanup=()=>{clearTimeout(timer);target.removeEventListener(event,done);target.removeEventListener("error",failed);signal.removeEventListener("abort",aborted);};const done=()=>{cleanup();resolve();},failed=()=>{cleanup();reject(new Error("This media could not be decoded. Try a PNG/JPEG image or a browser-supported MP4/WebM video."));},aborted=()=>{cleanup();reject(new Error("Import cancelled."));};target.addEventListener(event,done,{once:true});target.addEventListener("error",failed,{once:true});signal.addEventListener("abort",aborted,{once:true});timer=setTimeout(()=>{cleanup();reject(new Error("Media decoding timed out. Try a shorter or smaller file."));},timeout);if(signal.aborted){aborted();return;}try{action();}catch(error){cleanup();reject(error);}});}
@@ -545,7 +648,7 @@ function startStudio() {
   }
   $("media-file").addEventListener("change",event=>importMedia(event.target.files[0]));$("cancel-import").addEventListener("click",()=>state.importing?.abort());
   window.addEventListener("beforeunload",event=>{if(state.dirty||state.importing){event.preventDefault();event.returnValue="";}});
-  window.addEventListener("pagehide",()=>{state.importing?.abort();for(const image of aiImages.values())image.close();aiImages.clear();if(state.renderURL)URL.revokeObjectURL(state.renderURL);});
+  window.addEventListener("pagehide",()=>{clearTimeout(aiTimer);state.importing?.abort();for(const image of aiImages.values())image.close();aiImages.clear();if(state.renderURL)URL.revokeObjectURL(state.renderURL);if(liveURL)URL.revokeObjectURL(liveURL);for(const entry of deviceImages.values())URL.revokeObjectURL(entry.url);});
   setDraft(blank(480));showPage('home');renderDevices();if(token)poll();else{$("auth").hidden=false;connected(false);status("Open Display studio from the tray, or enter your local API token to connect.");}
 }
 if(typeof document!=="undefined")startStudio();

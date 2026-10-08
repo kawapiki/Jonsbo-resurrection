@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kawapiki/Jonsbo-resurrection/internal/aibrand"
 	data "github.com/kawapiki/Jonsbo-resurrection/pkg/aisubscriptions"
 )
 
@@ -38,27 +37,34 @@ func DrawWidgetDetail(s data.State, provider, detail string, width, height int, 
 		provider = data.OpenAI
 	}
 	logicalW, logicalH := width, height
-	if width < 320 {
-		logicalW = 320
-		logicalH = max(180, height*320/width)
-	}
+	logicalW = max(360, width)
+	logicalH = max(164, height)
 	canvas := image.NewRGBA(image.Rect(0, 0, logicalW, logicalH))
 	fill(canvas, canvas.Bounds(), background)
 	switch provider {
 	case "overview":
-		text(canvas, 18, 12, "AI SUBSCRIPTIONS", 14, foreground)
-		providerCard(canvas, s, data.OpenAI, image.Rect(12, 36, logicalW-12, 184), now, animate)
-		providerCard(canvas, s, data.Claude, image.Rect(12, 194, logicalW-12, 342), now, animate)
-		text(canvas, 18, 354, "OBSERVED SESSIONS", 14, muted)
-		sessionRows(canvas, s, "", 382, 44, 2)
+		text(canvas, 18, 14, "AI ACTIVITY", 21, foreground)
+		providerCard(canvas, s, data.OpenAI, image.Rect(12, 52, logicalW-12, 252), now, animate)
+		providerCard(canvas, s, data.Claude, image.Rect(12, 268, logicalW-12, 468), now, animate)
 	case "sessions":
 		text(canvas, 18, 16, "OBSERVED SESSIONS", 21, foreground)
-		sessionRows(canvas, s, "", 54, 65, max(1, (logicalH-54)/65))
+		sessionRows(canvas, s, "", 58, 102, max(1, (logicalH-58)/102))
 	default:
-		providerCard(canvas, s, provider, image.Rect(8, 8, logicalW-8, min(logicalH-8, 172)), now, animate)
-		if detail == "expanded" && logicalH > 212 {
-			text(canvas, 16, 190, "OBSERVED SESSIONS", 14, muted)
-			sessionRows(canvas, s, provider, 214, 58, max(1, (logicalH-214)/58))
+		cardHeight := logicalH - 8
+		headingY, sessionY, sessionStep := 236, 270, 100
+		if detail == "expanded" && logicalH >= 300 {
+			cardHeight = 216
+			if logicalH < 360 {
+				cardHeight = 164
+				headingY = 184
+				sessionY = 212
+				sessionStep = 88
+			}
+		}
+		providerCard(canvas, s, provider, image.Rect(0, 0, logicalW, cardHeight+8), now, animate)
+		if detail == "expanded" && logicalH >= 300 {
+			text(canvas, 16, headingY, "OBSERVED SESSIONS", 21, muted)
+			sessionRows(canvas, s, provider, sessionY, sessionStep, max(1, (logicalH-sessionY)/sessionStep))
 		}
 	}
 	if logicalW == width && logicalH == height {
@@ -79,148 +85,6 @@ func providerState(s data.State, id string) data.Provider {
 		}
 	}
 	return data.Provider{ID: id, Connection: "disconnected", UsageLabel: "Tokens this week", Coverage: "Unavailable"}
-}
-func providerCard(im *image.RGBA, s data.State, id string, r image.Rectangle, now time.Time, animate bool) {
-	p := providerState(s, id)
-	fill(im, r, panel)
-	accent := color.RGBA{90, 211, 179, 255}
-	name := "OPENAI / CODEX"
-	if id == data.Claude {
-		accent = color.RGBA{217, 151, 117, 255}
-		name = "CLAUDE"
-	}
-	live := p.Connection == "connected" && !p.Stale
-	pulse := 1.0
-	if live && animate {
-		pulse = 0.70 + 0.30*(1+math.Sin(float64(now.UnixNano())/1e9*math.Pi))/2
-	}
-	markColor := muted
-	if live {
-		markColor = color.RGBA{uint8(float64(accent.R) * pulse), uint8(float64(accent.G) * pulse), uint8(float64(accent.B) * pulse), 255}
-	}
-	cx, cy := r.Min.X+22, r.Min.Y+26
-	for y := -12; y <= 12; y++ {
-		for x := -12; x <= 12; x++ {
-			d := x*x + y*y
-			if d >= 81 && d <= 144 {
-				im.SetRGBA(cx+x, cy+y, markColor)
-			}
-		}
-	}
-	if logo := aibrand.Logo(id); logo != nil {
-		paintLogoFit(im, logo, image.Rect(cx-8, cy-8, cx+8, cy+8))
-	}
-	text(im, r.Min.X+44, r.Min.Y+12, name, 14, foreground)
-	status := p.Connection
-	if p.Stale {
-		status += " / STALE"
-	}
-	if len(p.Quotas) > 0 && !p.Quotas[0].ObservedAt.IsZero() {
-		age := max(0, int(now.Sub(p.Quotas[0].ObservedAt).Seconds()))
-		unit := "S"
-		if age >= 86400 {
-			age /= 86400
-			unit = "D"
-		} else if age >= 3600 {
-			age /= 3600
-			unit = "H"
-		} else if age >= 60 {
-			age /= 60
-			unit = "M"
-		}
-		status += fmt.Sprintf(" / QUOTA %d%s AGO", age, unit)
-	}
-	text(im, r.Min.X+44, r.Min.Y+32, clip(status, (r.Dx()-52)/6), 7, muted)
-	quotas := p.Quotas
-	localQuota := false
-	if weeklyQuota(quotas) == nil && len(p.LocalQuotas) > 0 {
-		quotas = p.LocalQuotas
-		localQuota = true
-	}
-	quota := weeklyQuota(quotas)
-	quotaText := "--"
-	if quota != nil && quota.UsedPercent != nil {
-		quotaText = fmt.Sprintf("%.0f%%", *quota.UsedPercent)
-	}
-	text(im, r.Min.X+12, r.Min.Y+57, "7-DAY QUOTA  "+quotaText, 14, foreground)
-	barRect := image.Rect(r.Min.X+12, r.Min.Y+78, r.Max.X-12, r.Min.Y+84)
-	fill(im, barRect, track)
-	if quota != nil && quota.UsedPercent != nil {
-		bar(im, barRect, *quota.UsedPercent, accent)
-	}
-	reset := "RESET --"
-	if quota != nil && quota.ResetsAt != nil {
-		remaining := quota.ResetsAt.Sub(now)
-		if remaining > 0 {
-			hours := int(math.Ceil(remaining.Hours()))
-			reset = fmt.Sprintf("RESET IN %dD %dH", hours/24, hours%24)
-		} else {
-			reset = "RESET DUE"
-		}
-	}
-	for _, q := range quotas {
-		if q.WindowMinutes != nil && *q.WindowMinutes == 300 && q.UsedPercent != nil {
-			reset = fmt.Sprintf("5H %.0f%%  |  %s", *q.UsedPercent, reset)
-			break
-		}
-	}
-	if id == data.Claude && len(quotas) == 0 {
-		reset = "LIMITS NOT REPORTED"
-	}
-	text(im, r.Min.X+12, r.Min.Y+90, reset, 7, muted)
-	label := p.UsageLabel
-	if label == "" {
-		label = "Tokens this week"
-	}
-	tokens := p.WeeklyTokens
-	localTokens := false
-	if id == data.Claude && tokens == nil && p.LocalWeeklyTokens != nil {
-		tokens = p.LocalWeeklyTokens
-		label = "Local tokens this week"
-		localTokens = true
-	}
-	text(im, r.Min.X+12, r.Min.Y+105, clip(label+": "+number(tokens), (r.Dx()-24)/6), 7, foreground)
-	coverage := p.Coverage
-	if coverage == "" {
-		coverage = "Unavailable"
-	}
-	if localQuota || localTokens {
-		coverage = "Observed Claude Code; partial"
-	} else if id == data.Claude && tokens == nil && len(quotas) == 0 {
-		coverage = "Claude Code usage feed required"
-	}
-	if id == data.Claude && len(p.Quotas) > 0 {
-		coverage = "Subscription quota; tokens unavailable"
-		if localTokens {
-			coverage = "Subscription quota; local tokens partial"
-		}
-	}
-	if p.Partial && !strings.Contains(strings.ToLower(coverage), "partial") {
-		coverage += " / partial"
-	}
-	text(im, r.Min.X+12, r.Min.Y+121, clip(coverage, (r.Dx()-24)/6), 7, muted)
-	// Activity is independent of the account connection indicator.
-	activity := ""
-	for _, session := range s.Sessions {
-		if session.Provider == id && !session.Stale && member(session.Activity, "running", "waiting") {
-			activity = session.Activity
-			if activity == "running" {
-				break
-			}
-		}
-	}
-	if activity != "" {
-		a := accent
-		if animate && activity == "running" {
-			brightness := (1 + math.Sin(float64(now.UnixNano())/1e9*2*math.Pi)) / 2
-			a = color.RGBA{uint8(float64(accent.R) * (.65 + .35*brightness)), uint8(float64(accent.G) * (.65 + .35*brightness)), uint8(float64(accent.B) * (.65 + .35*brightness)), 255}
-		}
-		x := r.Max.X - 24
-		fill(im, image.Rect(x, r.Min.Y+16, x+8, r.Min.Y+24), a)
-		if activity == "waiting" {
-			fill(im, image.Rect(x+3, r.Min.Y+16, x+5, r.Min.Y+24), panel)
-		}
-	}
 }
 func weeklyQuota(q []data.Quota) *data.Quota {
 	for i := range q {
@@ -274,8 +138,8 @@ func sessionRows(im *image.RGBA, s data.State, id string, y, step, limit int) {
 		if session.Stale {
 			activity = "unknown / stale"
 		}
-		text(im, 18, top, clip(group+"  "+activity, (im.Bounds().Dx()-36)/6), 7, muted)
-		text(im, 18, top+11, clip(title, (im.Bounds().Dx()-36)/6), 7, foreground)
+		text(im, 18, top, clip(group+"  "+activity, (im.Bounds().Dx()-36)/12), 14, muted)
+		text(im, 18, top+23, clip(title, (im.Bounds().Dx()-36)/18), 21, foreground)
 		usage := "TOKENS " + number(session.ConsumedTokens) + "  CONTEXT --"
 		var percent *float64
 		if session.Context != nil {
@@ -287,15 +151,15 @@ func sessionRows(im *image.RGBA, s data.State, id string, y, step, limit int) {
 				percent = &v
 			}
 		}
-		if step >= 58 {
-			text(im, 18, top+25, clip(usage, (im.Bounds().Dx()-36)/6), 7, muted)
-			rect := image.Rect(18, top+40, im.Bounds().Dx()-18, top+44)
+		if step >= 80 {
+			text(im, 18, top+55, clip(usage, (im.Bounds().Dx()-36)/12), 14, muted)
+			rect := image.Rect(18, top+80, im.Bounds().Dx()-18, top+86)
 			fill(im, rect, track)
 			if percent != nil {
 				bar(im, rect, *percent, color.RGBA{102, 170, 204, 255})
 			}
 		} else {
-			text(im, 18, top+23, clip(usage, (im.Bounds().Dx()-36)/6), 7, muted)
+			text(im, 18, top+49, clip(usage, (im.Bounds().Dx()-36)/12), 14, muted)
 		}
 		count++
 	}

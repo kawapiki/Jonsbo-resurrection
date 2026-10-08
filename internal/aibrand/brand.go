@@ -16,6 +16,9 @@ var openai []byte
 //go:embed claude.png
 var claude []byte
 
+//go:embed claude-crab.svg
+var crab []byte
+
 var once sync.Once
 var marks map[string]image.Image
 
@@ -36,11 +39,15 @@ func Logo(provider string) image.Image {
 // ServeHTTP serves only the two embedded public assets.
 func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var b []byte
+	mime := "image/png"
 	switch r.URL.Path {
 	case "/ai-assets/openai.png":
 		b = openai
 	case "/ai-assets/claude.png":
 		b = claude
+	case "/ai-assets/claude-crab.svg":
+		b = crab
+		mime = "image/svg+xml"
 	default:
 		http.NotFound(w, r)
 		return
@@ -50,7 +57,7 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", 405)
 		return
 	}
-	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Type", mime)
 	if r.Method == http.MethodGet {
 		_, _ = w.Write(b)
 	}
