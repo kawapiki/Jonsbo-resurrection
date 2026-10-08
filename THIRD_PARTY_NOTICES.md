@@ -8,6 +8,7 @@ The project-authored Go source is MIT licensed. Third-party material retains its
 | PawnIO 2.2.0 driver | Separately installed Windows dependency, not distributed by the app | Upstream driver license and official signed distribution at https://pawnio.eu/ |
 | Go standard library/runtime | Compiler/runtime and standard packages | Go BSD-style license at https://go.dev/LICENSE |
 | AMD ADL | Calls the user's installed Windows graphics driver | No AMD DLL or SDK library is bundled; API references in source and docs |
+| OpenAI and Claude Code marks | Public reference icons and a code-drawn Clawd mascot identify providers; the blossom silhouette is rendered in white on dark displays | Marks belong to their respective owners; source URLs and usage notes in `internal/aibrand/README.md` |
 
 The original JONSBO application, decompiled vendor source, captured USB traffic, downloaded compilers and driver installers are local research/development artifacts, excluded from version control and release bundles. No HWiNFO/JONSBO DLL is linked or loaded by this app. This project is independent and is not endorsed by JONSBO, AMD, OpenAI, or Anthropic.
 

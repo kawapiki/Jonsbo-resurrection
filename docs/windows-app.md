@@ -23,6 +23,12 @@ The console executable supports the same controls:
 
 Startup registration does not copy or install the app. Use the desktop EXE/tray to register the GUI binary. Registering the console executable runs its tray mode with a console subsystem; use the desktop binary for a windowless start.
 
+## Updating an installed copy
+
+Exit the tray, extract the complete new release into its permanent folder, and run that folder's `JonsboResurrection.exe`. Enable the same startup mode again from the new tray so Windows launches the updated executable at the next sign-in. Testing a build in another folder does not update the previously registered startup copy.
+
+Keep `%LOCALAPPDATA%\JonsboResurrection` when updating; it contains your saved layouts and display assignments. An older executable can reject layouts containing newer widgets, with an error such as `json: unknown field "provider"`. In that case, update the executable registered for startup rather than deleting the saved layouts. For elevated startup, the registered executable is visible in the Jonsbo task's Actions tab in Task Scheduler.
+
 ## Data and troubleshooting
 
 Tray mode keeps data under `%LOCALAPPDATA%\JonsboResurrection`, regardless of the launch directory. The API token is private local data and is never included in a release. CLI `serve` retains its explicit/working-directory paths. The API remains authenticated and restricted to loopback.

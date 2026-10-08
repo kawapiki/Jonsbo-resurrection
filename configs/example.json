@@ -4,7 +4,8 @@
   "frame_interval": "1s",
   "modules": {
     "hardware": { "enabled": true, "options": { "interval": "1s" } },
-    "example": { "enabled": true, "options": { "interval": "250ms" } }
+    "example": { "enabled": true, "options": { "interval": "250ms" } },
+    "ai-subscriptions": { "enabled": true }
   },
   "displays": {}
 }

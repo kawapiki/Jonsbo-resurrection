@@ -8,12 +8,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/aiadapters"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/api"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/config"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/configuratorweb"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/output"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/winusb"
 	"github.com/kawapiki/Jonsbo-resurrection/modules/configurator"
+	data "github.com/kawapiki/Jonsbo-resurrection/pkg/aisubscriptions"
 	"github.com/kawapiki/Jonsbo-resurrection/pkg/module"
 	"io"
 	"net"
@@ -178,7 +180,26 @@ func serve(args []string) error {
 			displays = manager
 		}
 	}
-	handler, err := api.NewHandlerWithUI(source, displays, token, editor.Handler(displays), configuratorweb.Files())
+	var adapters *aiadapters.Manager
+	var ai api.AIController
+	if settings, ok := cfg.Modules["ai-subscriptions"]; ok && settings.Enabled {
+		dir, e := aiDirectory(cfg, settings.Options)
+		if e != nil {
+			return e
+		}
+		adapters, e = aiadapters.New(dir, func(ctx context.Context, o data.Observation) error {
+			b, e := json.Marshal(o)
+			if e != nil {
+				return e
+			}
+			return runtime.Event(ctx, "ai-subscriptions", module.Event{Type: "observation", Payload: b})
+		})
+		if e != nil {
+			return fmt.Errorf("AI adapters: %w", e)
+		}
+		ai = adapters
+	}
+	handler, err := api.NewHandlerWithAI(source, displays, token, editor.Handler(displays), configuratorweb.Files(), ai)
 	if err != nil {
 		return err
 	}
@@ -203,8 +224,24 @@ func serve(args []string) error {
 		return err
 	}
 	defer listener.Close()
+	if adapters != nil {
+		settings := cfg.Modules["ai-subscriptions"]
+		dir, _ := aiDirectory(cfg, settings.Options)
+		bridge := map[string]string{"api": "http://" + listener.Addr().String(), "token_file": filepath.Join(dir, "browser.token")}
+		b, e := json.MarshalIndent(bridge, "", "  ")
+		if e != nil {
+			return e
+		}
+		if e = os.WriteFile(filepath.Join(dir, "bridge.json"), b, 0600); e != nil {
+			return e
+		}
+	}
 	if err = runtime.Start(ctx); err != nil {
 		return err
+	}
+	adapterDone := make(chan error, 1)
+	if adapters != nil {
+		go func() { adapterDone <- adapters.Run(ctx) }()
 	}
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return ctx }}
 	serverDone := make(chan error, 1)
@@ -227,6 +264,18 @@ func serve(args []string) error {
 		server.Close()
 	}
 	stop()
+	if adapters != nil {
+		select {
+		case e := <-adapterDone:
+			if e != nil && serveErr == nil {
+				serveErr = e
+			}
+		case <-shutdown.Done():
+			if serveErr == nil {
+				serveErr = shutdown.Err()
+			}
+		}
+	}
 	if manager != nil {
 		select {
 		case e := <-displayDone:

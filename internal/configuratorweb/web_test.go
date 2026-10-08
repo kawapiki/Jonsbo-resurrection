@@ -8,7 +8,7 @@ import (
 )
 
 func TestExplicitFiles(t *testing.T) {
-	for path, mime := range map[string]string{"/": "text/html", "/app.js": "text/javascript", "/style.css": "text/css", "/signature.png": "image/png"} {
+	for path, mime := range map[string]string{"/": "text/html", "/app.js": "text/javascript", "/style.css": "text/css", "/signature.png": "image/png", "/ai-assets/openai.png": "image/png", "/ai-assets/claude.png": "image/png", "/ai-assets/claude-crab.svg": "image/svg+xml"} {
 		t.Run(path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			Files().ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
@@ -41,5 +41,39 @@ func TestFilesRejectBrowseAndMutations(t *testing.T) {
 	Files().ServeHTTP(w, httptest.NewRequest(http.MethodHead, "/", nil))
 	if w.Code != http.StatusOK || w.Body.Len() != 0 {
 		t.Fatal("HEAD must return headers without content")
+	}
+}
+
+func TestAIEditorControlsAreAccessibleAndEmbedded(t *testing.T) {
+	html, err := files.ReadFile("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{`id="ai-setup"`, `id="ai-connection-status" role="status"`, `id="prop-provider"`, `id="prop-detail"`, `id="prop-animate" type="checkbox"`, `data-ai-widget="openai"`, `data-ai-widget="claude"`, `aria-label="Native client setup proposal"`} {
+		if !strings.Contains(string(html), required) {
+			t.Fatalf("missing control: %s", required)
+		}
+	}
+	widgetSettings := strings.SplitN(string(html), `id="ai-fields"`, 2)
+	if len(widgetSettings) != 2 {
+		t.Fatal("missing AI widget settings")
+	}
+	widgetSettings = strings.SplitN(widgetSettings[1], `</fieldset>`, 2)
+	for _, required := range []string{`id="ai-connection-status"`, `id="ai-sign-in"`, `aria-controls="ai-sign-in-help"`, `id="ai-monitor"`, `id="ai-setup"`, `data-ai-action="check"`, `codex login`, `claude auth login --claudeai`} {
+		if !strings.Contains(widgetSettings[0], required) {
+			t.Fatalf("missing inline connection control: %s", required)
+		}
+	}
+	for _, removed := range []string{`id="ai-usage"`, `id="nav-ai"`, `id="ai-manage"`, `data-library="ai"`, `data-ai-action="connect"`} {
+		if strings.Contains(string(html), removed) {
+			t.Fatalf("separate AI page or browser login control remains: %s", removed)
+		}
+	}
+	script, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(script), "window.open") || strings.Contains(string(script), "aiAuthURL") {
+		t.Fatal("OAuth browser launch remains in editor")
 	}
 }

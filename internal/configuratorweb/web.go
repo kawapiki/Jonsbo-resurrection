@@ -4,6 +4,7 @@ package configuratorweb
 
 import (
 	"embed"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/aibrand"
 	"net/http"
 )
 
@@ -13,6 +14,12 @@ var files embed.FS
 // Files serves only the editor's explicit public entry points, never directories.
 func Files() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ai-assets/openai.png" || r.URL.Path == "/ai-assets/claude.png" || r.URL.Path == "/ai-assets/claude-crab.svg" {
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			aibrand.ServeHTTP(w, r)
+			return
+		}
 		name, mime := "", ""
 		switch r.URL.Path {
 		case "/":

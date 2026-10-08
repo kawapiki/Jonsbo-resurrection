@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Jonsbo Subscription Display",
+  "version": "1.0.0",
+  "description": "Reports visible ChatGPT and Claude chat activity to your local Jonsbo display.",
+  "permissions": ["nativeMessaging"],
+  "action": {"default_popup":"popup.html"},
+  "background": {"service_worker": "background.js", "type": "module"},
+  "content_scripts": [{
+    "matches": ["https://chatgpt.com/*", "https://claude.ai/*"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }]
+}

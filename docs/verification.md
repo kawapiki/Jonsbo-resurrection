@@ -26,3 +26,28 @@ Run `scripts/build.ps1` to repeat tests, vet and build. Run `bin/jonsbo.exe list
 Delivered: serial-addressed CLI, static PNG/JPEG input, generated patterns, optional logical previews, configurable rotation, WinUSB discovery, bounded transactions, handle cleanup, protocol documentation and a Windows executable.
 
 Not yet delivered: background service, reconnect worker, live sensors, animated content, visual layout editor, notification ingestion or AI-agent integrations. The CLI re-enumerates each invocation and has no frame queue. Long-running reliability and hot-unplug behavior still need physical testing when those features are implemented.
+
+## Startup repair verification — 2026-10-08
+
+The registered elevated sign-in task still launched an older installed 0.4.0
+executable after a newer workspace build saved AI widgets. Its server repeatedly
+exited with `json: unknown field "provider"`. The same failure was reproduced
+with the old executable and a copied layout file. The current executable loaded
+that copy successfully. The installed startup executables were updated, with
+backups retained and no saved-layout edits.
+
+The startup check also reproduced a quota ordering bug. OpenAI authentication
+could finish more than one second after a poll began; a quota timestamp captured
+at poll start was then rejected behind the newer account update. Quota and daily
+usage observations now use the time their native read completes. A regression
+with delayed native authentication and the real aggregation module failed before
+the correction and passed afterward.
+
+Verification used the existing elevated Windows startup task and its native
+profile, rather than relying on the workspace process alone. All four physical
+display workers reported live writes, both native subscription logins were
+detected, both providers' quota readings were fresh, and the task's saved layout
+file was unchanged. Normal monitoring was restored through the registered task.
+The full Go suite, vet, all four executable builds, and 23 JavaScript tests passed.
+An independent scoped review and test run found no concrete issue. This check
+launched the sign-in task directly; it did not reboot the PC or publish a release.

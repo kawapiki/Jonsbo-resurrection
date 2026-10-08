@@ -87,6 +87,14 @@ type handler struct {
 	requests          chan struct{}
 	configurator, web http.Handler
 	editorRequests    chan struct{}
+	ai                AIController
+}
+
+// AIController authenticates only narrowly scoped native metadata intake.
+// Account management remains protected by the master API credential.
+type AIController interface {
+	Handler() http.Handler
+	AuthenticateIngress(*http.Request) bool
 }
 
 // NewHandler leaves listener, HTTP server timeouts, and token storage to the caller.
@@ -97,13 +105,18 @@ func NewHandler(backend Backend, displays Displays, token string) (http.Handler,
 // NewHandlerWithUI serves a public, data-free editor shell and an authenticated
 // configurator API behind the same host, origin and bearer-token checks.
 func NewHandlerWithUI(backend Backend, displays Displays, token string, configurator, web http.Handler) (http.Handler, error) {
+	return NewHandlerWithAI(backend, displays, token, configurator, web, nil)
+}
+
+// NewHandlerWithAI mounts subscription management and scoped observer intake.
+func NewHandlerWithAI(backend Backend, displays Displays, token string, configurator, web http.Handler, ai AIController) (http.Handler, error) {
 	if backend == nil {
 		return nil, errors.New("backend is required")
 	}
 	if len(token) < 32 || strings.TrimSpace(token) != token || strings.ContainsAny(token, "\r\n") {
 		return nil, errors.New("token must contain at least 32 characters without surrounding whitespace")
 	}
-	return &handler{backend: backend, displays: displays, token: sha256.Sum256([]byte(token)), renders: make(chan struct{}, 2), streams: make(chan struct{}, 32), requests: make(chan struct{}, 32), configurator: configurator, web: web, editorRequests: make(chan struct{}, 2)}, nil
+	return &handler{backend: backend, displays: displays, token: sha256.Sum256([]byte(token)), renders: make(chan struct{}, 2), streams: make(chan struct{}, 32), requests: make(chan struct{}, 32), configurator: configurator, web: web, editorRequests: make(chan struct{}, 2), ai: ai}, nil
 }
 
 func fail(w http.ResponseWriter, status int) { http.Error(w, http.StatusText(status), status) }
@@ -185,9 +198,28 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		provided = strings.TrimPrefix(auth[0], "Bearer ")
 	}
 	sum := sha256.Sum256([]byte(provided))
-	if subtle.ConstantTimeCompare(h.token[:], sum[:]) != 1 {
+	scoped := h.ai != nil && strings.HasPrefix(r.URL.Path, "/v1/ai/") && len(auth) == 1 && h.ai.AuthenticateIngress(r)
+	if subtle.ConstantTimeCompare(h.token[:], sum[:]) != 1 && !scoped {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		fail(w, http.StatusUnauthorized)
+		return
+	}
+	if h.ai != nil && strings.HasPrefix(r.URL.Path, "/v1/ai/") {
+		select {
+		case h.requests <- struct{}{}:
+			defer func() { <-h.requests }()
+		default:
+			fail(w, http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		controller := http.NewResponseController(w)
+		_ = controller.SetReadDeadline(time.Now().Add(30 * time.Second))
+		_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		defer controller.SetReadDeadline(time.Time{})
+		defer controller.SetWriteDeadline(time.Time{})
+		h.ai.Handler().ServeHTTP(w, r.WithContext(ctx))
 		return
 	}
 	if r.URL.Path == "/v1/events" {
