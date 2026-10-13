@@ -85,7 +85,7 @@ go run ./examples/event-producer -token-file bin/api-token -message 'Build compl
 
 ## Customize and extend
 
-The [local display configurator](docs/configurator.md) adds editable overlays, five preset themes, history/usage charts, storage free space, AI activity and saved image/video-frame backgrounds. Choose **Open configurator** from the tray, select a display, and use **Save & apply** when your layout is ready. Read the [v0.5.0 release notes](docs/releases/0.5.0.md) for the studio redesign and [v0.5.1 release notes](docs/releases/0.5.1.md) for the OpenAI usage-update fix and visible sign-in warnings.
+The [local display configurator](docs/configurator.md) adds editable overlays, five preset themes, history/usage charts, storage free space, AI activity and saved image/video-frame backgrounds. Choose **Open configurator** from the tray, select a display, and use **Save & apply** when your layout is ready. Read the [v0.5.0 release notes](https://github.com/kawapiki/Jonsbo-resurrection/blob/v0.5.0/docs/releases/0.5.0.md) for the studio redesign and [v0.5.1 release notes](docs/releases/0.5.1.md) for the OpenAI usage-update fix and visible sign-in warnings.
 
 Start with [configs/example.json](configs/example.json), then run:
 
