@@ -54,6 +54,10 @@ func providerCard(im *image.RGBA, s data.State, id string, r image.Rectangle, no
 		accent = color.RGBA{217, 119, 87, 255}
 		name = "CLAUDE"
 	}
+	if p.Connection == "reauthentication" {
+		signInCard(card, id, name, r, now)
+		return
+	}
 	fill(card, r, panel)
 	fill(card, image.Rect(r.Min.X, r.Min.Y, r.Min.X+4, r.Max.Y), accent)
 	activity := activityFor(s, id)
@@ -179,6 +183,35 @@ func providerCard(im *image.RGBA, s data.State, id string, r image.Rectangle, no
 		if r.Dy() >= 182 {
 			text(card, left, y+166, scope, 14, muted)
 		}
+	}
+}
+
+// Authentication failures replace the numbers so cached readings cannot look
+// current. This same frame is used by the editor and physical display renderer.
+func signInCard(card *image.RGBA, id, name string, r image.Rectangle, now time.Time) {
+	warning := color.RGBA{255, 188, 89, 255}
+	fill(card, r, panel)
+	fill(card, image.Rect(r.Min.X, r.Min.Y, r.Min.X+6, r.Max.Y), warning)
+	x, y := r.Min.X+16, r.Min.Y
+	if r.Dy() >= 260 {
+		y += (r.Dy() - 164) / 2
+	}
+	drawMascot(card, id, image.Rect(x, y+8, x+56, y+64), now, false, "")
+	titleSize, headingSize := 21, 35
+	if r.Dx() >= 560 {
+		headingSize = 42
+	} else if r.Dx() < 440 {
+		titleSize, headingSize = 14, 21
+	}
+	text(card, x+68, y+18, name, titleSize, foreground)
+	text(card, x, y+62, "SIGN IN NEEDED", headingSize, warning)
+	if r.Dx() >= 404 {
+		text(card, x, y+112, "USAGE UPDATES STOPPED", 14, foreground)
+		text(card, x, y+140, "OPEN DISPLAY STUDIO TO RECONNECT", 14, muted)
+	} else {
+		text(card, x, y+94, "USAGE UPDATES STOPPED", 14, foreground)
+		text(card, x, y+120, "OPEN DISPLAY STUDIO", 14, muted)
+		text(card, x, y+144, "TO RECONNECT ACCOUNT", 14, muted)
 	}
 }
 

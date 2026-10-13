@@ -16,21 +16,22 @@ import (
 )
 
 type fixtureRunner struct {
-	mu             sync.Mutex
-	methods        []string
-	closed         chan struct{}
-	started        chan struct{}
-	failQuotas     bool
-	accountEmail   string
-	quotaAccountID string
-	accountType    string
-	home           string
-	refreshFlags   []bool
-	startOnce      sync.Once
-	closeOnce      sync.Once
-	snapshotAuth   bool
-	workerStarts   int
-	accountDelay   time.Duration
+	mu                         sync.Mutex
+	methods                    []string
+	closed                     chan struct{}
+	started                    chan struct{}
+	failQuotas                 bool
+	accountEmail               string
+	quotaAccountID             string
+	accountType                string
+	home                       string
+	refreshFlags               []bool
+	startOnce                  sync.Once
+	closeOnce                  sync.Once
+	snapshotAuth               bool
+	workerStarts               int
+	accountDelay               time.Duration
+	forcedRefreshClearsAccount bool
 }
 
 func TestSlowCodexAuthenticationDoesNotDiscardFreshQuota(t *testing.T) {
@@ -120,6 +121,7 @@ func (f *fixtureRunner) StartCodex(_ context.Context, _ string, home string, not
 			failQuotas, email, quotaID := f.failQuotas, f.accountEmail, f.quotaAccountID
 			accountDelay := f.accountDelay
 			accountType := f.accountType
+			forcedRefreshClearsAccount := f.forcedRefreshClearsAccount
 			if snapshotAuth {
 				accountType, email, quotaID = initialType, initialEmail, initialQuotaID
 			}
@@ -135,6 +137,10 @@ func (f *fixtureRunner) StartCodex(_ context.Context, _ string, home string, not
 			switch req.Method {
 			case "account/read":
 				time.Sleep(accountDelay)
+				if forced, _ := req.Params["refreshToken"].(bool); forced && forcedRefreshClearsAccount {
+					result = map[string]any{"account": nil, "requiresOpenaiAuth": true}
+					break
+				}
 				if accountType == "signed-out" {
 					result = map[string]any{"account": nil}
 					break

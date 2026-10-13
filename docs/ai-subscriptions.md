@@ -40,6 +40,15 @@ It renders as white strokes directly on the dark card, with no white background
 box. Every animation frame is drawn in Go; no GIF or MP4 playback is used.
 Fresh local activity can animate independently of account quota monitoring.
 Stale activity cannot keep a disconnected mascot moving.
+When the native sign-in needs attention, the physical widget replaces usage
+numbers with a large amber **Sign in needed** notice, **Usage updates stopped**,
+and a reminder to reconnect through Display Studio. Cached numbers remain stored
+but are hidden on that screen until the connection recovers. The mascot stays still.
+
+![Physical fan widget when sign-in is required](screenshots/ai-signin-required.png)
+
+*Code-rendered example of the failure state; not a live account.*
+
 Browser reduced-motion settings pause editor previews; switch animation off in
 the widget to pause it on a physical display.
 
