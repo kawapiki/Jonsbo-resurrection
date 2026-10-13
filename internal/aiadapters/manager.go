@@ -327,7 +327,10 @@ func (m *Manager) refresh(p string) error {
 		m.rpc = nil
 	}
 	now := time.Now().UTC()
-	account, login, err := m.nativeAccount(ctx, p, true)
+	// Codex renews managed tokens when its service requests need them. Forcing
+	// OAuth renewal during an otherwise healthy poll can clear its account in
+	// memory and falsely block quota/usage reads with a sign-in-required status.
+	account, login, err := m.nativeAccount(ctx, p, false)
 	m.loginState(p, login)
 	if err != nil {
 		m.set(p, "reauthentication", err.Error())

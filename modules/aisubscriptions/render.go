@@ -52,7 +52,8 @@ func DrawWidgetDetail(s data.State, provider, detail string, width, height int, 
 	default:
 		cardHeight := logicalH - 8
 		headingY, sessionY, sessionStep := 236, 270, 100
-		if detail == "expanded" && logicalH >= 300 {
+		signInNeeded := providerState(s, provider).Connection == "reauthentication"
+		if detail == "expanded" && logicalH >= 300 && !signInNeeded {
 			cardHeight = 216
 			if logicalH < 360 {
 				cardHeight = 164
@@ -62,7 +63,7 @@ func DrawWidgetDetail(s data.State, provider, detail string, width, height int, 
 			}
 		}
 		providerCard(canvas, s, provider, image.Rect(0, 0, logicalW, cardHeight+8), now, animate)
-		if detail == "expanded" && logicalH >= 300 {
+		if detail == "expanded" && logicalH >= 300 && !signInNeeded {
 			text(canvas, 16, headingY, "OBSERVED SESSIONS", 21, muted)
 			sessionRows(canvas, s, provider, sessionY, sessionStep, max(1, (logicalH-sessionY)/sessionStep))
 		}
