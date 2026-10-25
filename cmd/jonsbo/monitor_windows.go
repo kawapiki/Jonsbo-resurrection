@@ -7,12 +7,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/config"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/device"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/output"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/winusb"
 	"github.com/kawapiki/Jonsbo-resurrection/pkg/module"
+	"io"
 	"os"
 	"os/signal"
 	"time"
@@ -147,7 +147,7 @@ func monitor(args []string) error {
 		return e
 	}
 	defer closeRuntime(r)
-	manager, e := output.New(r, output.USBDriver{}, ds, output.Options{PreviewDir: *previews, OnChange: statusLogger(log)})
+	manager, e := output.New(r, &output.USBDriver{}, ds, output.Options{PreviewDir: *previews, OnChange: statusLogger(log)})
 	if e != nil {
 		return e
 	}

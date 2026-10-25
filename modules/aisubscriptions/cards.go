@@ -40,26 +40,19 @@ func activityFor(s data.State, id string) string {
 	return activity
 }
 
-func providerCard(im *image.RGBA, s data.State, id string, r image.Rectangle, now time.Time, animate bool) {
-	// Draw within the card so even a resized widget cannot bleed into its neighbours.
-	r = r.Intersect(im.Bounds())
-	if r.Empty() {
-		return
-	}
-	card := im.SubImage(r).(*image.RGBA)
+// providerPresentation is shared by every display shape. Only layout differs.
+type providerPresentation struct {
+	status, activity              string
+	live                          bool
+	quotas                        []data.Quota
+	quota                         *data.Quota
+	tokens                        *int64
+	localQuota, localTokens       bool
+	quotaLabel, tokenLabel, scope string
+}
+
+func presentProvider(s data.State, id string) providerPresentation {
 	p := providerState(s, id)
-	accent := color.RGBA{115, 206, 191, 255}
-	name := "CHATGPT / CODEX"
-	if id == data.Claude {
-		accent = color.RGBA{217, 119, 87, 255}
-		name = "CLAUDE"
-	}
-	if p.Connection == "reauthentication" {
-		signInCard(card, id, name, r, now)
-		return
-	}
-	fill(card, r, panel)
-	fill(card, image.Rect(r.Min.X, r.Min.Y, r.Min.X+4, r.Max.Y), accent)
 	activity := activityFor(s, id)
 	live := p.Connection == "connected" && !p.Stale
 	status := "NOT CONNECTED"
@@ -87,10 +80,6 @@ func providerCard(im *image.RGBA, s data.State, id string, r image.Rectangle, no
 		localQuota = true
 	}
 	quota := weeklyQuota(quotas)
-	value := "--"
-	if quota != nil && quota.UsedPercent != nil {
-		value = fmt.Sprintf("%.0f%%", *quota.UsedPercent)
-	}
 	tokens := p.WeeklyTokens
 	localTokens := false
 	if id == data.Claude && tokens == nil && p.LocalWeeklyTokens != nil {
@@ -113,6 +102,42 @@ func providerCard(im *image.RGBA, s data.State, id string, r image.Rectangle, no
 	}
 	if tokens == nil {
 		scope = "NOT REPORTED"
+	}
+
+	if p.Connection == "reauthentication" {
+		quotas, quota, tokens = nil, nil, nil
+	}
+	return providerPresentation{status, activity, live, quotas, quota, tokens, localQuota, localTokens, quotaLabel, tokenLabel, scope}
+}
+
+func providerCard(im *image.RGBA, s data.State, id string, r image.Rectangle, now time.Time, animate bool) {
+	// Draw within the card so even a resized widget cannot bleed into its neighbours.
+	r = r.Intersect(im.Bounds())
+	if r.Empty() {
+		return
+	}
+	card := im.SubImage(r).(*image.RGBA)
+	p := providerState(s, id)
+	accent := color.RGBA{115, 206, 191, 255}
+	name := "CHATGPT / CODEX"
+	if id == data.Claude {
+		accent = color.RGBA{217, 119, 87, 255}
+		name = "CLAUDE"
+	}
+	if p.Connection == "reauthentication" {
+		signInCard(card, id, name, r, now)
+		return
+	}
+	fill(card, r, panel)
+	fill(card, image.Rect(r.Min.X, r.Min.Y, r.Min.X+4, r.Max.Y), accent)
+	view := presentProvider(s, id)
+	activity, live, status := view.activity, view.live, view.status
+	quotas, quota, tokens := view.quotas, view.quota, view.tokens
+	localQuota, localTokens := view.localQuota, view.localTokens
+	quotaLabel, tokenLabel, scope := view.quotaLabel, view.tokenLabel, view.scope
+	value := "--"
+	if quota != nil && quota.UsedPercent != nil {
+		value = fmt.Sprintf("%.0f%%", *quota.UsedPercent)
 	}
 	reset := "RESET --"
 	if quota != nil && quota.ResetsAt != nil {

@@ -27,7 +27,7 @@ func DrawWidget(s data.State, provider string, width, height int, now time.Time,
 	return DrawWidgetDetail(s, provider, detail, width, height, now, animate)
 }
 
-// DrawWidgetDetail accepts compact/expanded; an empty provider selects OpenAI.
+// DrawWidgetDetail accepts compact, expanded, orbit or strip; an empty provider selects OpenAI.
 // Dimensions outside the module image contract produce an empty image.
 func DrawWidgetDetail(s data.State, provider, detail string, width, height int, now time.Time, animate bool) image.Image {
 	if width < 1 || height < 1 || width > 2048 || height > 2048 || width*height > 2000000 {
@@ -35,6 +35,9 @@ func DrawWidgetDetail(s data.State, provider, detail string, width, height int, 
 	}
 	if provider == "" {
 		provider = data.OpenAI
+	}
+	if detail == "orbit" || detail == "strip" {
+		return drawOrbitWidget(s, provider, detail, width, height)
 	}
 	logicalW, logicalH := width, height
 	logicalW = max(360, width)

@@ -3,15 +3,52 @@ package output
 import (
 	"context"
 	"errors"
-	"image"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/device"
 	"github.com/kawapiki/Jonsbo-resurrection/pkg/module"
+	"image"
 	"sync"
 	"testing"
 	"time"
 )
 
 type fakeSource struct{}
+
+type closeErrorDriver struct{ fakeDriver }
+
+func (*closeErrorDriver) Close() error { return errors.New("close failed") }
+func TestOnceReturnsCleanupErrorWithoutBlocking(t *testing.T) {
+	m, err := New(fakeSource{}, &closeErrorDriver{}, []device.Device{{Serial: "ABC", Kind: "fan"}}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- m.Once(context.Background()) }()
+	select {
+	case err := <-done:
+		if err == nil || err.Error() != "close failed" {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cleanup blocked on full result channel")
+	}
+}
+
+func TestCyclopsGetsNativeViewAndFrameSize(t *testing.T) {
+	driver := &fakeDriver{}
+	m, err := New(fakeSource{}, driver, []device.Device{{Serial: "RJK-TEST", Kind: "cyclops"}}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Displays()[0].Assignment; got.View != "cyclops" || got.Rotation != 0 {
+		t.Fatal(got)
+	}
+	if err = m.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if driver.bounds != image.Rect(0, 0, 240, 240) {
+		t.Fatal(driver.bounds)
+	}
+}
 
 func (fakeSource) ValidateView(id, view string) error {
 	if id != "hardware" || view == "bad" {
