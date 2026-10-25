@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	maxLayouts    = 32
+	maxLayouts    = 33 // Preserve a full legacy library plus the new circular default.
 	maxAssets     = 32
 	maxOverlays   = 32
 	maxFrames     = 120
@@ -107,10 +107,10 @@ func ValidateLayout(l Layout) error {
 	if !idPattern.MatchString(l.ID) || strings.TrimSpace(l.Name) == "" || len(l.Name) > 128 {
 		return invalid("layout id/name")
 	}
-	if l.Width != 640 || (l.Height != 480 && l.Height != 180) || !rotation(l.Rotation) {
+	if !canvasDimensions(l.Width, l.Height) || !rotation(l.Rotation) {
 		return invalid("canvas dimensions/rotation")
 	}
-	if (l.ID == "default-pump" && l.Height != 480) || (l.ID == "default-fan" && l.Height != 180) {
+	if (l.ID == "default-pump" && l.Height != 480) || (l.ID == "default-fan" && l.Height != 180) || (l.ID == "default-cyclops" && l.Height != 240) {
 		return invalid("default view canvas size is fixed")
 	}
 	if !colorPattern.MatchString(l.Background.Color) || !opacity(l.Background.Opacity) || (l.Background.AssetID != "" && !idPattern.MatchString(l.Background.AssetID)) {
@@ -140,11 +140,11 @@ func ValidateLayout(l Layout) error {
 			if o.Provider != "" && o.Provider != "openai" && o.Provider != "claude" {
 				return invalid("AI provider")
 			}
-			if o.Detail != "" && o.Detail != "compact" && o.Detail != "expanded" {
+			if o.Detail != "" && o.Detail != "compact" && o.Detail != "expanded" && o.Detail != "orbit" && o.Detail != "strip" {
 				return invalid("AI detail")
 			}
 		case "text":
-		case "metric", "line", "pie", "bar":
+		case "metric", "line", "pie", "bar", "radial", "centered", "ring", "number", "sparkline":
 			if !metrics[o.Metric] {
 				return invalid("unknown metric")
 			}
@@ -158,6 +158,9 @@ func ValidateLayout(l Layout) error {
 	return nil
 }
 func Themes(width, height int) []Theme {
+	if width == 240 && height == 240 {
+		return circularThemes()
+	}
 	if width != 640 || (height != 480 && height != 180) {
 		width, height = 640, 480
 	}

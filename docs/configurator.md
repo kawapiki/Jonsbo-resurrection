@@ -68,3 +68,11 @@ Authenticated editor routes start with `/v1/configurator`:
 - `POST /v1/configurator/apply` accepts `{serial,layout_id,rotation}` and persists the display binding.
 
 Saved data is in `configurator/` beside the API token file. Media filenames are generated locally; uploaded names are labels, never filesystem paths. Back up this folder to preserve customizations. Treat compiled modules as trusted code; the configurator does not execute uploaded scripts or fetch remote background URLs.
+# Cyclops circular format
+
+Select a connected **Cyclops** or choose the offline **Cyclops 240 × 240** format.
+Thermal dial, Graphics dial, Twin temperatures, Memory orbit and Processor pulse
+are designed for its circular visible area. **Radial gauge** and **Centered value**
+widgets support the existing metric picker, color, range and placement controls.
+The editor, exact render and live output use circular previews. See
+[Cyclops setup and verified behavior](cyclops.md) for connection requirements.

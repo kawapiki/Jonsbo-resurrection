@@ -104,7 +104,7 @@ func (m *Module) serve(w http.ResponseWriter, r *http.Request, d Displays) error
 				return invalid("height")
 			}
 		}
-		if width != 640 || (height != 480 && height != 180) {
+		if !canvasDimensions(width, height) {
 			return invalid("canvas dimensions")
 		}
 		s := m.stateCopy()
@@ -194,7 +194,7 @@ func (m *Module) serve(w http.ResponseWriter, r *http.Request, d Displays) error
 			if _, ok := s.Layouts[id]; !ok {
 				return module.ErrNotFound
 			}
-			if id == "default-pump" || id == "default-fan" {
+			if id == "default-pump" || id == "default-fan" || id == "default-cyclops" {
 				return conflict("default views cannot be deleted")
 			}
 			for _, a := range s.Bindings {
@@ -385,11 +385,14 @@ func (m *Module) apply(w http.ResponseWriter, r *http.Request, d Displays) error
 		if display.Serial == req.Serial {
 			old = display.Assignment
 			found = true
-			expected := 480
+			expected, width := 480, 640
 			if display.Kind == "fan" {
 				expected = 180
 			}
-			if l.Height != expected {
+			if display.Kind == "cyclops" {
+				expected, width = 240, 240
+			}
+			if l.Height != expected || l.Width != width {
 				return invalid("layout canvas does not match display")
 			}
 			break

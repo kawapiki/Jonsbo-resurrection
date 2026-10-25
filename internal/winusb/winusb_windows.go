@@ -46,6 +46,8 @@ type interfaceData struct {
 var interfaceGUIDs = []guid{
 	{0x88bae032, 0x5a81, 0x49f0, [8]byte{0xbc, 0x3d, 0xa4, 0xff, 0x13, 0x82, 0x16, 0xd6}},
 	{0x12345678, 0x1234, 0x1344, [8]byte{0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc}},
+	// Cyclops ships with the native Windows HID driver.
+	{0x4d1e55b2, 0xf16f, 0x11cf, [8]byte{0x88, 0xcb, 0x00, 0x11, 0x11, 0x00, 0x00, 0x30}},
 }
 
 func Enumerate() ([]device.Device, error) {
@@ -57,9 +59,9 @@ func Enumerate() ([]device.Device, error) {
 			return nil, err
 		}
 		for _, path := range paths {
-			if d, ok := device.ParseInterface(path); ok && !seen[path] {
+			if d, ok := device.ParseInterface(path); ok && !seen[d.Kind+":"+d.Serial] {
 				devices = append(devices, d)
-				seen[path] = true
+				seen[d.Kind+":"+d.Serial] = true
 			}
 		}
 	}
@@ -120,6 +122,7 @@ type Connection struct {
 	handle  uintptr
 	Pipes   []Pipe
 	In, Out byte
+	hid     bool
 }
 
 func Open(d device.Device) (*Connection, error) {
@@ -135,6 +138,14 @@ func Open(d device.Device) (*Connection, error) {
 		return nil, fmt.Errorf("open %s: %w", d.Serial, err)
 	}
 	c := &Connection{file: h}
+	if d.Kind == "cyclops" {
+		c.hid = true
+		if err := c.inspectHID(); err != nil {
+			c.Close()
+			return nil, err
+		}
+		return c, nil
+	}
 	ok, _, e := initialize.Call(uintptr(h), uintptr(unsafe.Pointer(&c.handle)))
 	if ok == 0 {
 		syscall.CloseHandle(h)
@@ -208,6 +219,12 @@ func (c *Connection) SetReadTimeout(d time.Duration) error {
 	return nil
 }
 func (c *Connection) transfer(b []byte, read bool) (int, error) {
+	if c.hid {
+		if read {
+			return 0, fmt.Errorf("Cyclops does not define input acknowledgements")
+		}
+		return c.hidTransfer(b, false)
+	}
 	if c.handle == 0 {
 		return 0, fmt.Errorf("USB connection is closed")
 	}

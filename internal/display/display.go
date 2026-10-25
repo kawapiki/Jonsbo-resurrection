@@ -37,6 +37,8 @@ func Dimensions(kind string) (int, int, error) {
 		return 640, 480, nil
 	case "fan":
 		return 180, 640, nil
+	case "cyclops":
+		return 240, 240, nil
 	default:
 		return 0, 0, fmt.Errorf("unknown display kind %q", kind)
 	}
@@ -56,7 +58,9 @@ func Send(ctx context.Context, t Transport, kind string, im image.Image) (result
 		return result, fmt.Errorf("%s requires %dx%d image", kind, w, h)
 	}
 	s := session{ctx: ctx, transport: t, result: &result}
-	if kind == "fan" {
+	if kind == "cyclops" {
+		err = s.cyclops(im)
+	} else if kind == "fan" {
 		err = s.fan(im)
 	} else {
 		err = s.pump(im)

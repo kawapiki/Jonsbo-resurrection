@@ -173,7 +173,7 @@ func serve(args []string) error {
 		if len(ds) == 0 {
 			fmt.Fprintln(log, "No displays attached; API only. Restart monitoring after connecting displays.")
 		} else {
-			manager, e = output.New(source, output.USBDriver{}, ds, output.Options{Assignments: assignments, OnChange: statusLogger(log)})
+			manager, e = output.New(source, &output.USBDriver{}, ds, output.Options{Assignments: assignments, OnChange: statusLogger(log)})
 			if e != nil {
 				return e
 			}

@@ -2,6 +2,22 @@ package device
 
 import "testing"
 
+func TestCyclopsIdentity(t *testing.T) {
+	d, ok := ParseInterface(`\\?\hid#vid_1f3a&pid_b128#b&1d5ec18d&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}`)
+	if !ok || d.Kind != "cyclops" || d.Serial != "RJK-B_1D5EC18D_0_0000" {
+		t.Fatalf("native HID Cyclops not recognized: %+v %v", d, ok)
+	}
+	for _, path := range []string{
+		`\\?\usb#vid_1f3a&pid_b128#9&123abc&0&2#{a5dcbf10-6530-11d2-901f-00c04fb951ed}`,
+		`\\?\hid#vid_1f3a&pid_efe8#123#{guid}`,
+		`\\?\hid#vid_0416&pid_5408#123#{guid}`,
+	} {
+		if _, ok := ParseInterface(path); ok {
+			t.Fatal("unsupported transport or bootloader selected", path)
+		}
+	}
+}
+
 func TestParseInterfaceAllowsOnlySupportedHardware(t *testing.T) {
 	for _, tc := range []struct {
 		path, serial, kind string

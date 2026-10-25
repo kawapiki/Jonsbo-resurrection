@@ -3,6 +3,43 @@ import assert from 'node:assert/strict';
 import helpers from './app.js';
 const {constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken} = helpers;
 
+test('adding AI on a circular canvas uses a native orbit without changing the original',()=>{
+ const layout={width:240,height:240,overlays:[]};
+ const next=helpers.withAIWidget(layout,'openai','ai-test');
+ assert.equal(next.overlays[0].detail,'orbit');
+ assert.equal(next.overlays[0].w,220);assert.equal(next.overlays[0].x,10);
+ assert.equal(layout.overlays.length,0);
+});
+
+test('compact number reserves the actual label height and uses LCD pixel advances',()=>{
+ assert.deepEqual(helpers.compactNumberSize({w:150,h:70,font_size:56},'25%'),{labelSize:14,valueSize:49});
+ assert.deepEqual(helpers.compactNumberSize({w:72,h:58,font_size:42},'52C'),{labelSize:7,valueSize:21});
+ assert.equal(helpers.compactNumberSize({w:10,h:10,font_size:42},'100%').valueSize,0);
+});
+
+test('circular format adapts both axes and preserves the original layout',()=>{
+ const original={id:'default-pump',width:640,height:480,overlays:[{x:320,y:240,w:320,h:240,font_size:28}]};
+ const round=adaptLayout(original,240);
+ assert.equal(round.width,240);assert.equal(round.height,240);
+ assert.equal(round.overlays[0].x,120);assert.equal(round.overlays[0].y,120);
+ assert.equal(round.overlays[0].w,120);assert.equal(round.overlays[0].h,120);
+ assert.notEqual(round.id,original.id);assert.equal(original.width,640);
+ const restored=adaptLayout(round,480);assert.equal(restored.width,640);
+});
+
+test('Cyclops opens its circular default instead of the pump layout',()=>{
+ const round={id:'default-cyclops',name:'Cyclops',width:240,height:240,overlays:[],background:{}};
+ const result=helpers.layoutForDisplay({kind:'cyclops',serial:'RJK1'},[round],{},'custom-round');
+ assert.equal(result.width,240);assert.equal(result.height,240);assert.equal(result.rotation,0);
+});
+
+test('tiny radial widgets never produce a negative canvas radius',()=>{
+ for(const [w,h] of [[1,1],[10,220],[220,1],[14,14],[220,220]]) {
+  const radius=helpers.radialRadius(w,h);
+  assert.ok(Number.isFinite(radius)&&radius>=0);
+ }
+});
+
 test('widget connection status only asks for sign-in when the selected provider needs it',()=>{
  const options={connected:true};
  const active=helpers.aiProviderView({ready:true,login:'signed-in',monitoring:true},options);

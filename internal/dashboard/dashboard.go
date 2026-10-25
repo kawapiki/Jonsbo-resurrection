@@ -2,8 +2,8 @@ package dashboard
 
 import (
 	"fmt"
-	"image"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/telemetry"
+	"image"
 	"math"
 )
 
@@ -26,6 +26,9 @@ const (
 
 // Colors are Windows COLORREF (0x00BBGGRR).
 func Render(s telemetry.Snapshot, role string) (*image.RGBA, error) {
+	if role == "cyclops" {
+		return renderCyclops(s)
+	}
 	h := 180
 	if role == "summary" {
 		h = 480

@@ -11,18 +11,32 @@ function constrainLayer(layer, width, height) {
   return layer;
 }
 function adaptLayout(layout, height) {
-  const next = clone(layout), scale = height / layout.height;
-  next.height = height; next.width = 640;
+  const next = clone(layout), scale = height / layout.height, width = height === 240 ? 240 : 640, scaleX = width / layout.width;
+  next.height = height; next.width = width;
   // A size change creates a separate layout: an existing binding still expects
   // its original format, and built-in default IDs have fixed dimensions.
   if (height !== layout.height && layout.id) next.id = "layout-" + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 20);
   next.overlays = (next.overlays || []).map(layer => {
-    const adjusted={...layer, y:Math.round(layer.y*scale),h:Math.max(1,Math.round(layer.h*scale)),font_size:Math.round(clamp(layer.font_size*Math.min(1,scale),8,96))};
+    const adjusted={...layer, x:Math.round(layer.x*scaleX),w:Math.max(1,Math.round(layer.w*scaleX)), y:Math.round(layer.y*scale),h:Math.max(1,Math.round(layer.h*scale)),font_size:Math.round(clamp(layer.font_size*Math.min(1,scale,scaleX),8,96))};
     // Keep the provider's quota/token card readable when switching aspect ratios.
     if(layer.type==='ai-provider' && height===180 && layout.height!==180)Object.assign(adjusted,{detail:'compact',w:Math.max(560,adjusted.w),h:164});
-    return constrainLayer(adjusted,640,height);
+    return constrainLayer(adjusted,width,height);
   });
   return next;
+}
+function radialRadius(width,height) { return Math.max(0,Math.min(width,height)/2-7); }
+function compactNumberSize(layer,value) {
+ const labelSize=layer.h>=65&&layer.w>=120?14:7,available=layer.h-labelSize-6;
+ let size=layer.font_size||20;
+ while(size>7&&(value.length*6*Math.max(1,Math.floor(size/7))>layer.w-4||Math.max(1,Math.floor(size/7))*7>available))size--;
+ return {labelSize,valueSize:available<7?0:Math.max(1,Math.floor(size/7))*7};
+}
+// Matches the portable 5x7 LCD font in modules/configurator/render.go.
+const lcdGlyphs={"0":[14,17,19,21,25,17,14],"1":[4,12,4,4,4,4,14],"2":[14,17,1,2,4,8,31],"3":[30,1,1,14,1,1,30],"4":[2,6,10,18,31,2,2],"5":[31,16,16,30,1,1,30],"6":[14,16,16,30,17,17,14],"7":[31,1,2,4,8,8,8],"8":[14,17,17,14,17,17,14],"9":[14,17,17,15,1,1,14]," ":[0,0,0,0,0,0,0],"A":[14,17,17,31,17,17,17],"B":[30,17,17,30,17,17,30],"C":[14,17,16,16,16,17,14],"D":[30,17,17,17,17,17,30],"E":[31,16,16,30,16,16,31],"F":[31,16,16,30,16,16,16],"G":[14,17,16,23,17,17,15],"H":[17,17,17,31,17,17,17],"I":[14,4,4,4,4,4,14],"J":[7,2,2,2,18,18,12],"K":[17,18,20,24,20,18,17],"L":[16,16,16,16,16,16,31],"M":[17,27,21,21,17,17,17],"N":[17,25,21,19,17,17,17],"O":[14,17,17,17,17,17,14],"P":[30,17,17,30,16,16,16],"Q":[14,17,17,17,21,18,13],"R":[30,17,17,30,20,18,17],"S":[15,16,16,14,1,1,30],"T":[31,4,4,4,4,4,4],"U":[17,17,17,17,17,17,14],"V":[17,17,17,17,17,10,4],"W":[17,17,17,21,21,21,10],"X":[17,17,10,4,10,17,17],"Y":[17,17,10,4,4,4,4],"Z":[31,1,2,4,8,16,31],".":[0,0,0,0,0,6,6],",":[0,0,0,0,6,6,4],":":[0,6,6,0,6,6,0],"-":[0,0,0,31,0,0,0],"_":[0,0,0,0,0,0,31],"/":[1,1,2,4,8,16,16],"%":[25,25,2,4,8,19,19],"?":[14,17,1,2,4,0,4],">":[16,8,4,2,4,8,16],"<":[1,2,4,8,4,2,1],"+":[0,4,4,31,4,4,0],"=":[0,0,31,0,31,0,0],"(":[2,4,8,8,8,4,2],")":[8,4,2,2,2,4,8],"!":[4,4,4,4,4,0,4],"°":[6,9,9,6,0,0,0]};
+function lcdCentered(context,layer,dy,value,size,color){
+ while(size>7&&value.length*6*Math.max(1,Math.floor(size/7))>Math.max(1,layer.w-4))size--;
+ const scale=Math.max(1,Math.floor(size/7));let x=layer.x+Math.max(0,Math.floor((layer.w-value.length*6*scale)/2));context.fillStyle=color;
+ for(const ch of value.toUpperCase()){if(x+5*scale>layer.x+layer.w)break;const glyph=lcdGlyphs[ch]||lcdGlyphs['?'];for(let row=0;row<7;row++)for(let col=0;col<5;col++)if(glyph[row]&(1<<(4-col)))context.fillRect(x+col*scale,layer.y+dy+row*scale,scale,scale);x+=6*scale;}
 }
 function coverRect(sourceWidth, sourceHeight, width, height) {
   const scale = Math.max(width / sourceWidth, height / sourceHeight);
@@ -69,6 +83,7 @@ function withAIWidget(layout, provider, newID) {
  if(layout.overlays.length>=32)throw new Error('A layout can contain up to 32 widgets.');
  const next=clone(layout),index=next.overlays.length;
  next.overlays.push(constrainLayer({id:newID,type:'ai-provider',provider,detail:'compact',animate:true,metric:'',label:'',x:16,y:layout.height===180?8:24+(index%3)*32,w:608,h:layout.height===180?164:200,color:'#a8c9ff',font_size:28,min:0,max:100,opacity:1},layout.width,layout.height));
+ if(layout.width===240)Object.assign(next.overlays.at(-1),{x:10,y:10,w:220,h:220,detail:'orbit'});
  return next;
 }
 function mediaPlan(width, height, duration) {
@@ -103,7 +118,8 @@ async function loadDisplayPreview(device, bindings, epoch, request, current) {
   return {blob,path,epoch};
 }
 function assignedLayout(device, assignment, newID) {
-  const height=device.kind==='fan'?180:480;
+  const height=device.kind==='cyclops'?240:device.kind==='fan'?180:480;
+  if(height===240)return null;
   const layout={id:newID,name:'',width:640,height,rotation:0,background:{color:'#0c1015',asset_id:'',opacity:1},overlays:[]};
   const add=(id,type,metric,label,x,y,w,h,font_size=28,color='#e9f1f7')=>layout.overlays.push({id,type,metric,label,x,y,w,h,font_size,color,min:0,max:100,opacity:1});
   if(assignment?.module==='hardware' && ['summary','cpu','gpu','memory'].includes(assignment.view)){
@@ -144,11 +160,11 @@ function layoutForDisplay(device, layouts, bindings, newID) {
   if(bound)return orientLayout(bound,assignment);
   const assigned=assignedLayout(device,assignment,newID);
   if(assigned)return assigned;
-  const base=layouts.find(l=>l.id===(device.kind==='fan'?'default-fan':'default-pump'));
+  const base=layouts.find(l=>l.id===(device.kind==='cyclops'?'default-cyclops':device.kind==='fan'?'default-fan':'default-pump'));
   if(!base)throw new Error('Default layout unavailable. Reconnect to the service.');
-  return orientLayout({...clone(base),id:newID,name:(device.kind==='fan'?'Fan':'Pump')+' '+device.serial.slice(-4)+' custom'},assignment);
+  return orientLayout({...clone(base),id:newID,name:(device.kind==='cyclops'?'Cyclops':device.kind==='fan'?'Fan':'Pump')+' '+device.serial.slice(-4)+' custom'},assignment);
 }
-if (typeof module !== "undefined" && module.exports) module.exports = {clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken, saveThenApply, layoutForDisplay, displayFramePath, loadDisplayPreview, aiPreferences, aiProviderView, aiActionAllowed, withAIWidget};
+if (typeof module !== "undefined" && module.exports) module.exports = {compactNumberSize, radialRadius, clamp, constrainLayer, adaptLayout, coverRect, orientLayout, metricValue, mediaPlan, readToken, saveThenApply, layoutForDisplay, displayFramePath, loadDisplayPreview, aiPreferences, aiProviderView, aiActionAllowed, withAIWidget};
 
 function startStudio() {
   const $ = id => document.getElementById(id);
@@ -165,13 +181,13 @@ function startStudio() {
   new ResizeObserver(fitCanvas).observe(well);
   const id = prefix => prefix + "-" + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 20);
   const currentAssignment = () => state.devices.find(device => device.serial === state.serial)?.assignment || state.bindings[state.serial];
-  const blank = height => orientLayout({id:id("layout"), name:height === 180 ? "My fan display" : "My pump display", width:640, height, background:{color:"#121a26", asset_id:"", opacity:1}, overlays:[], rotation:0}, currentAssignment());
+  const blank = height => orientLayout({id:id("layout"), name:height===240?"My Cyclops display":height === 180 ? "My fan display" : "My pump display", width:height===240?240:640, height, background:{color:"#121a26", asset_id:"", opacity:1}, overlays:[], rotation:0}, currentAssignment());
   const selected = () => state.draft?.overlays.find(layer => layer.id === state.selected);
   let applying = false;
   let page='home', deviceSignature='', previewBusy=false;
   let canvasView='edit',liveRequest=0,liveURL='',liveKey='',liveBusyKey='',aiTimer;
   const deviceImages=new Map();
-  function displayName(device){const a=device.assignment || state.bindings[device.serial];const content=a?.module==='hardware'?({cpu:'CPU',gpu:'GPU',memory:'Memory',summary:'System overview'})[a.view]:a?.module==='ai-subscriptions'?({claude:'Claude',openai:'ChatGPT',overview:'AI overview',sessions:'AI sessions'})[a.view]:null;return (device.kind==='fan'?'Fan':'Pump')+(content?' · '+content:'')+' · '+device.serial.slice(-4);}
+  function displayName(device){const a=device.assignment || state.bindings[device.serial];const content=a?.module==='hardware'?({cpu:'CPU',gpu:'GPU',memory:'Memory',summary:'System overview'})[a.view]:a?.module==='ai-subscriptions'?({claude:'Claude',openai:'ChatGPT',overview:'AI overview',sessions:'AI sessions'})[a.view]:null;return (device.kind==='cyclops'?'Cyclops':device.kind==='fan'?'Fan':'Pump')+(content?' · '+content:'')+' · '+device.serial.slice(-4);}
   function showPage(next){page=next;document.body.dataset.page=next;requestAnimationFrame(fitCanvas);updateActions();}
   function setCanvasView(view){canvasView=view;canvas.hidden=view==='live';$('current-output').hidden=view!=='live';document.querySelectorAll('[data-canvas-view]').forEach(button=>{button.setAttribute('aria-pressed',String(button.dataset.canvasView===view));button.disabled=button.dataset.canvasView==='live'&&!state.serial;});$('canvas-view-note').textContent=view==='live'?'Live output from the selected display':'Changes appear after Save & apply';$('selection-note').textContent=view==='live'?'Choose Edit layout to customize this screen.':'Select a widget to edit it.';requestAnimationFrame(fitCanvas);if(view==='live')refreshCurrentDisplay();}
   document.querySelectorAll('[data-canvas-view]').forEach(button=>button.addEventListener('click',()=>setCanvasView(button.dataset.canvasView)));
@@ -242,14 +258,14 @@ function startStudio() {
   function changed() { state.dirty = true; state.revision++; $("render-state").textContent = "Draft changed"; updateActions(); draw(); }
   function allowReplace() { return !state.dirty || window.confirm("Discard the unsaved changes in this layout?"); }
   function setDraft(layout, dirty = false) {
-    document.body.dataset.format=layout.height===180?'fan':'pump';
+    document.body.dataset.format=layout.height===240?'cyclops':layout.height===180?'fan':'pump';
     state.draft = clone(layout); state.height = layout.height; state.selected = ""; state.dirty = dirty; state.revision++;
     canvas.width = layout.width; canvas.height = layout.height;
     requestAnimationFrame(fitCanvas);
     $("layout-name").value = layout.name; $("rotation").value = String(layout.rotation || 0);
     $("background-color").value = layout.background.color; $("background-opacity").value = layout.background.opacity;
     $("canvas-size").textContent = layout.width + " × " + layout.height + " px";
-    $('editor-format').textContent=layout.height===180?'Fan · 640 × 180':'Pump · 640 × 480';
+    $('editor-format').textContent=layout.height===240?'Cyclops · 240 × 240 · Circular':layout.height===180?'Fan · 640 × 180':'Pump · 640 × 480';
     document.querySelectorAll("[data-height]").forEach(button=>button.classList.toggle("active", Number(button.dataset.height)===state.height));
     $("saved-layout").value = state.layouts.some(item => item.id === layout.id) ? layout.id : "";
     $("render-state").textContent = "Not rendered"; $("render-image").hidden = true;
@@ -289,7 +305,7 @@ function startStudio() {
     }
     for (const device of state.devices) {
       const button=element("button", "device" + (state.serial===device.serial?" active":""));
-      const icon=element("span", "screen-icon " + (device.kind==="fan"?"fan":"pump"));
+      const icon=element("span", "screen-icon " + (device.kind==="cyclops"?"cyclops":device.kind==="fan"?"fan":"pump"));
       const info=element("span"); info.append(element("strong", "", displayName(device)),element("small", "", device.serial),element("small", "", device.status || "Connected")); button.append(icon, info);
       button.setAttribute('aria-pressed',String(state.serial===device.serial));
       button.addEventListener("click",()=>selectDevice(device)); list.append(button);
@@ -332,18 +348,21 @@ function startStudio() {
     state.themes=[];state.themeHeight=0;renderThemes();
     if(!state.connected||state.themeRequestHeight===height)return;
     state.themeRequestHeight=height;
-    try{const data=await request("/v1/configurator?width=640&height="+height);state.themeCache[height]=data.themes||[];if(state.height===height){state.themes=state.themeCache[height];state.themeHeight=height;renderThemes();}}
+    try{const data=await request("/v1/configurator?width="+(height===240?240:640)+"&height="+height);state.themeCache[height]=data.themes||[];if(state.height===height){state.themes=state.themeCache[height];state.themeHeight=height;renderThemes();}}
     catch(error){status("Could not load themes for this format: "+error.message,true);}
     finally{if(state.themeRequestHeight===height)state.themeRequestHeight=0;}
   }
   function renderThemes() {
-    const list=$("themes"); list.replaceChildren();
+    const list=$("themes"),previews=[]; list.replaceChildren();
     for (const theme of state.themes) {
-      const button=element("button","theme"), thumbnail=element("canvas"); thumbnail.width=640; thumbnail.height=state.height; thumbnail.setAttribute("aria-hidden","true");
+      const button=element("button","theme"), thumbnail=element("canvas"); thumbnail.width=state.height===240?240:640; thumbnail.height=state.height; thumbnail.setAttribute("aria-hidden","true");
       const layout=adaptLayout(theme.layout,state.height); paint(thumbnail.getContext("2d"), layout, false);
       button.append(thumbnail,element("strong","",theme.name),element("small","",theme.description));
+      if(state.connected&&layout.width===240)previews.push({layout:clone(layout),thumbnail});
       button.addEventListener("click",()=>{if(!allowReplace())return;layout.id=id("layout");layout.name=theme.name+" custom";setDraft(orientLayout(layout,{rotation:state.draft.rotation}),true);status("Theme loaded. Select any layer to change its reading, position or style.");}); list.append(button);
     }
+    const epoch=state.epoch;
+    (async()=>{for(const {layout,thumbnail} of previews){if(epoch!==state.epoch||!thumbnail.isConnected)break;try{const blob=await request('/v1/configurator/preview.png',{method:'POST',body:JSON.stringify(layout),blob:true}),image=await createImageBitmap(blob);if(epoch===state.epoch&&thumbnail.isConnected){const c=thumbnail.getContext('2d');c.clearRect(0,0,240,240);c.drawImage(image,0,0);}image.close();}catch(_){/* Keep the editable local preview if the service is busy. */}}})();
   }
   function renderAssets() {
     const select=$("background-asset"); select.replaceChildren(new Option("No media", ""));
@@ -393,8 +412,8 @@ function startStudio() {
     $('inspector-empty').hidden=!!layer;
     $("selection-note").textContent=layer?"Drag to move. Bottom-right handle to resize. Arrow keys to nudge.":"Select a layer to move or resize it.";
     if(!layer)return;
-    $('inspector-title').textContent=({metric:'Live value',line:'History graph',pie:'Usage ring',bar:'Usage bar',text:'Text','ai-provider':'AI subscription'})[layer.type] || 'Widget settings';
-    $('range-fields').hidden=!['line','pie','bar'].includes(layer.type);
+    $('inspector-title').textContent=({metric:'Live value',line:'History graph',pie:'Usage ring',radial:'Radial gauge',centered:'Centered value',ring:'Rim ring',number:'Compact number',sparkline:'Mini graph',bar:'Usage bar',text:'Text','ai-provider':'AI subscription'})[layer.type] || 'Widget settings';
+    $('range-fields').hidden=!['line','pie','bar','radial','ring','sparkline'].includes(layer.type);
     for(const key of propNames)$("prop-"+key).value=layer[key] ?? "";
     $("metric-field").hidden=layer.type==="text" || layer.type==='ai-provider';
     $('ai-fields').hidden=layer.type!=='ai-provider';
@@ -406,7 +425,7 @@ function startStudio() {
     const index=state.draft.overlays.indexOf(layer);$("layer-down").disabled=index===0;$("layer-up").disabled=index===state.draft.overlays.length-1;
   }
   function paint(context, layout, interactive) {
-    context.save();context.globalAlpha=1;context.fillStyle=layout.background.color;context.fillRect(0,0,layout.width,layout.height);
+    context.save();context.globalAlpha=1;context.fillStyle="#000";context.fillRect(0,0,layout.width,layout.height);if(layout.width===240&&layout.height===240){context.beginPath();context.arc(120,120,120,0,Math.PI*2);context.clip();}context.fillStyle=layout.background.color;context.fillRect(0,0,layout.width,layout.height);
     if(interactive && state.background && layout.background.asset_id===state.backgroundID) {const rect=coverRect(state.background.naturalWidth,state.background.naturalHeight,layout.width,layout.height);context.globalAlpha=layout.background.opacity;context.drawImage(state.background,rect.x,rect.y,rect.w,rect.h);context.globalAlpha=1;}
     const metrics=state.metrics;
     for(const layer of layout.overlays) {
@@ -418,6 +437,33 @@ function startStudio() {
         const image=state.connected && aiImages.get(aiWidgetKey(layer));
         if(image)context.drawImage(image,layer.x,layer.y,layer.w,layer.h);
         else {context.font='14px Segoe UI, sans-serif';context.fillText((aiPreferences(layer).provider==='claude'?'Claude':'OpenAI')+' · --',layer.x+8,layer.y+8,layer.w-16);context.font='11px Segoe UI, sans-serif';context.fillText(state.connected?'Loading provider…':'Connect to the local service',layer.x+8,layer.y+32,layer.w-16);}
+      }
+      else if(layer.type==='ring') {
+        const cx=layer.x+layer.w/2,cy=layer.y+layer.h/2,r=Math.max(0,Math.min(layer.w,layer.h)/2-1),thickness=Math.max(3,r*.045),radius=Math.max(0,r-thickness/2),ratio=value===null?0:clamp((value-layer.min)/(layer.max-layer.min),0,1);
+        context.lineWidth=thickness;context.globalAlpha=layer.opacity/6;context.beginPath();context.arc(cx,cy,radius,0,Math.PI*2);context.stroke();context.globalAlpha=layer.opacity;
+        if(ratio>0){context.beginPath();context.arc(cx,cy,radius,-Math.PI/2,ratio*Math.PI*2-Math.PI/2);context.stroke();}
+      }
+      else if(layer.type==='number') {
+        const label=layer.label||metric?.label||layer.metric;
+        const display=value===null?'--':Number(value.toFixed(metric?.unit==='GiB'?1:0))+(metric?.unit||'');
+        const {labelSize,valueSize}=compactNumberSize(layer,display);
+        lcdCentered(context,layer,0,label,labelSize,layer.color);
+        if(valueSize)lcdCentered(context,layer,labelSize+6,display,valueSize,'#E7EFF0');
+      }
+      else if(layer.type==='sparkline') {
+        const now=Date.now(),cutoff=now-120000;let previous=null,pen=false,hasPoint=false;
+        context.globalAlpha=layer.opacity/7;context.fillRect(layer.x,layer.y+layer.h-1,layer.w,1);context.globalAlpha=layer.opacity;context.beginPath();
+        for(const point of state.history){const t=Date.parse(point.time),v=point.values?.[layer.metric];if(t<cutoff||t>now||!Number.isFinite(t))continue;if(typeof v!=='number'||!Number.isFinite(v)){pen=false;continue;}
+          const x=layer.x+(layer.w-1)*(t-cutoff)/120000,y=layer.y+Math.max(0,layer.h-3)-Math.floor(Math.max(0,layer.h-4)*clamp((v-layer.min)/(layer.max-layer.min),0,1));
+          if(pen&&t>previous&&t-previous<=3000)context.lineTo(x,y);else{context.moveTo(x,y);context.fillRect(x,y,2,2);}previous=t;pen=true;hasPoint=true;
+        }context.stroke();if(!hasPoint){context.font='7px monospace';context.textAlign='center';context.fillText('--',layer.x+layer.w/2,layer.y+Math.max(0,(layer.h-7)/2));}
+      }
+      else if(layer.type==='radial'||layer.type==='centered') {
+        const cx=layer.x+layer.w/2,cy=layer.y+layer.h/2,radius=radialRadius(layer.w,layer.h),ratio=value===null?0:clamp((value-layer.min)/(layer.max-layer.min||1),0,1);
+        if(layer.type==='radial'&&radius>0){context.lineWidth=Math.max(5,radius*.07);context.globalAlpha=layer.opacity*.2;context.beginPath();context.arc(cx,cy,radius,0,Math.PI*2);context.stroke();context.globalAlpha=layer.opacity;if(ratio>0){context.beginPath();context.arc(cx,cy,radius,-Math.PI/2,ratio*Math.PI*2-Math.PI/2);context.stroke();}}
+        const safeWidth=Math.max(1,layer.type==='radial'?radius*1.5:layer.w-8);
+        context.textAlign='center';context.font=Math.min(14,font)+'px Segoe UI, sans-serif';context.fillText(layer.label||metric?.label||layer.metric,cx,cy-28,safeWidth);
+        context.font=font+'px Segoe UI, sans-serif';context.textBaseline='middle';context.fillText(value===null?'--':Number(value.toFixed(metric?.unit==='GiB'?1:0))+' '+(metric?.unit||''),cx,cy+14,safeWidth);
       }
       else if(layer.type==="text") context.fillText(layer.label,layer.x,layer.y,layer.w);
       else {
@@ -527,7 +573,7 @@ function startStudio() {
   async function poll() {
     clearTimeout(state.pollTimer);if(state.polling||!token)return;state.polling=true;const epoch=state.epoch,requestedHeight=state.height;
     try {
-      const results=await Promise.all([request("/v1/configurator?width=640&height="+requestedHeight),request("/v1/displays")]);
+      const results=await Promise.all([request("/v1/configurator?width="+(requestedHeight===240?240:640)+"&height="+requestedHeight),request("/v1/displays")]);
       if(epoch!==state.epoch)return;
       const [data,devices]=results;state.layouts=data.layouts||[];state.themeCache[requestedHeight]=data.themes||[];
       if(state.height===requestedHeight){state.themes=state.themeCache[requestedHeight];if(state.themeHeight!==requestedHeight){state.themeHeight=requestedHeight;renderThemes();}}
@@ -569,8 +615,8 @@ function startStudio() {
   function clearAIStatus(){aiProviders=[];aiMessages.clear();aiHelpOpen=false;aiStatusTime=0;aiStatusRevision++;$('ai-message').textContent='';$('ai-setup-panel').hidden=true;$('ai-setup-content').textContent='';}
   $("auth-form").addEventListener("submit",event=>{event.preventDefault();token=$("token").value.trim();if(!token)return;state.epoch++;clearAIStatus();try{tokenStorage.setItem("jonsbo-token",token);}catch(_){}$("token").value="";state.initialized=false;poll();});
   $("forget-token").addEventListener("click",()=>{token="";state.epoch++;clearAIStatus();try{tokenStorage.removeItem("jonsbo-token");}catch(_){}clearTimeout(state.pollTimer);connected(false);state.metrics=state.metrics.map(m=>({...m,value:null}));renderMetrics();renderDevices();status("Token forgotten in this tab. Paste a token to reconnect.");});
-  document.querySelectorAll("[data-height]").forEach(button=>button.addEventListener("click",()=>{const height=Number(button.dataset.height);state.serial="";if(height!==state.height||state.draft.rotation!==(height===180?90:0))setDraft(orientLayout(adaptLayout(state.draft,height)),true);renderDevices();renderThemes();status("Virtual "+(height===180?"fan":"pump")+" preview. Select a connected display to apply.");}));
-  $("saved-layout").addEventListener("change",event=>{const chosen=state.layouts.find(layout=>layout.id===event.target.value);if(!chosen)return;if(!allowReplace()){event.target.value=state.draft.id;return;}const device=state.devices.find(item=>item.serial===state.serial);if(device&&(device.kind==="fan"?180:480)!==chosen.height)state.serial="";setDraft(state.serial?orientLayout(chosen,currentAssignment()):chosen);renderDevices();renderThemes();});
+  document.querySelectorAll("[data-height]").forEach(button=>button.addEventListener("click",()=>{const height=Number(button.dataset.height);state.serial="";if(height!==state.height||state.draft.rotation!==(height===180?90:0))setDraft(orientLayout(adaptLayout(state.draft,height)),true);renderDevices();renderThemes();status("Virtual "+(height===240?"Cyclops":height===180?"fan":"pump")+" preview. Select a connected display to apply.");}));
+  $("saved-layout").addEventListener("change",event=>{const chosen=state.layouts.find(layout=>layout.id===event.target.value);if(!chosen)return;if(!allowReplace()){event.target.value=state.draft.id;return;}const device=state.devices.find(item=>item.serial===state.serial);if(device&&(device.kind==="cyclops"?240:device.kind==="fan"?180:480)!==chosen.height)state.serial="";setDraft(state.serial?orientLayout(chosen,currentAssignment()):chosen);renderDevices();renderThemes();});
   $("new-layout").addEventListener("click",()=>{if(allowReplace())setDraft(blank(state.height),true);});
   $("layout-name").addEventListener("input",event=>{state.draft.name=event.target.value;changed();});
   $("rotation").addEventListener("change",event=>{state.draft.rotation=Number(event.target.value);changed();});
@@ -594,7 +640,13 @@ function startStudio() {
     if(state.draft.overlays.length>=32)return;setCanvasView('edit');const type=$("add-type").value,index=state.draft.overlays.length;
     if(type==='ai-provider'){addAIWidget('openai');return;}
     const layer={id:id("layer"),type,metric:"cpu.usage",label:type==="text"?"Your text":"CPU usage",x:20+(index%5)*16,y:20+(index%4)*16,w:type==="line"?280:190,h:type==="pie"?160:type==="text"?48:90,color:"#a8c9ff",font_size:28,min:0,max:100,opacity:1};
-    constrainLayer(layer,640,state.height);state.draft.overlays.push(layer);state.selected=layer.id;changed();renderLayers();renderProperties();
+    if(type==='radial')Object.assign(layer,{x:10,y:10,w:220,h:220,font_size:42});
+    if(type==='centered')Object.assign(layer,{x:40,y:65,w:160,h:100,font_size:35});
+    if(state.height===240&&type!=='radial'&&type!=='centered')Object.assign(layer,{x:45,y:60,w:150,h:type==='line'?100:90,font_size:21});
+    if(type==='ring')Object.assign(layer,{x:6,y:6,w:228,h:228,font_size:7});
+    if(type==='number')Object.assign(layer,{x:45,y:50,w:150,h:70,font_size:42,label:'CPU'});
+    if(type==='sparkline')Object.assign(layer,{x:45,y:125,w:150,h:36,font_size:7,label:''});
+    constrainLayer(layer,state.draft.width,state.height);state.draft.overlays.push(layer);state.selected=layer.id;changed();renderLayers();renderProperties();
   });
   $("delete-layer").addEventListener("click",()=>{state.draft.overlays=state.draft.overlays.filter(layer=>layer.id!==state.selected);state.selected="";changed();renderLayers();renderProperties();});
   function reorder(direction){const i=state.draft.overlays.findIndex(layer=>layer.id===state.selected),j=i+direction;if(i<0||j<0||j>=state.draft.overlays.length)return;[state.draft.overlays[i],state.draft.overlays[j]]=[state.draft.overlays[j],state.draft.overlays[i]];changed();renderLayers();renderProperties();}
@@ -602,9 +654,9 @@ function startStudio() {
   let drag=null;
   function canvasPoint(event){const rect=canvas.getBoundingClientRect();return{x:(event.clientX-rect.left)*canvas.width/rect.width,y:(event.clientY-rect.top)*canvas.height/rect.height};}
   canvas.addEventListener("pointerdown",event=>{if(event.button!==0)return;const point=canvasPoint(event),layer=[...state.draft.overlays].reverse().find(item=>point.x>=item.x&&point.y>=item.y&&point.x<=item.x+item.w&&point.y<=item.y+item.h);selectLayer(layer?.id||"");canvas.focus();if(!layer)return;drag={point,layer:clone(layer),resize:point.x>=layer.x+layer.w-14&&point.y>=layer.y+layer.h-14};canvas.setPointerCapture(event.pointerId);});
-  canvas.addEventListener("pointermove",event=>{if(!drag)return;const layer=selected();if(!layer)return;const point=canvasPoint(event),dx=point.x-drag.point.x,dy=point.y-drag.point.y;if(drag.resize){layer.w=Math.round(clamp(drag.layer.w+dx,1,640-layer.x));layer.h=Math.round(clamp(drag.layer.h+dy,1,state.height-layer.y));}else{layer.x=drag.layer.x+dx;layer.y=drag.layer.y+dy;}constrainLayer(layer,640,state.height);changed();renderProperties();});
+  canvas.addEventListener("pointermove",event=>{if(!drag)return;const layer=selected();if(!layer)return;const point=canvasPoint(event),dx=point.x-drag.point.x,dy=point.y-drag.point.y;if(drag.resize){layer.w=Math.round(clamp(drag.layer.w+dx,1,state.draft.width-layer.x));layer.h=Math.round(clamp(drag.layer.h+dy,1,state.height-layer.y));}else{layer.x=drag.layer.x+dx;layer.y=drag.layer.y+dy;}constrainLayer(layer,state.draft.width,state.height);changed();renderProperties();});
   for(const name of ["pointerup","pointercancel","lostpointercapture"])canvas.addEventListener(name,()=>{drag=null;});
-  canvas.addEventListener("keydown",event=>{const layer=selected();if(!layer)return;const step=event.shiftKey?10:1,delta={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[event.key];if(!delta)return;event.preventDefault();layer.x+=delta[0];layer.y+=delta[1];constrainLayer(layer,640,state.height);changed();renderProperties();});
+  canvas.addEventListener("keydown",event=>{const layer=selected();if(!layer)return;const step=event.shiftKey?10:1,delta={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[event.key];if(!delta)return;event.preventDefault();layer.x+=delta[0];layer.y+=delta[1];constrainLayer(layer,state.draft.width,state.height);changed();renderProperties();});
   $("preview-button").addEventListener("click",()=>renderPreview());$("save-button").addEventListener("click",saveLayout);
   $("apply-button").addEventListener("click",async()=>{
     if($("apply-button").disabled)return;

@@ -2,7 +2,11 @@
 
 A modular Go controller for the four screens on a **JONSBO TF3-360SC**, starting with Windows amd64. It sends images directly through WinUSB and exposes live module data, image previews, events, and screen assignments through a local HTTP API.
 
-This is an experimental, community-oriented project, independent of JONSBO. Hardware support has been verified on one TF3-360SC installation. It changes display content, not cooling settings or firmware.
+Also supports the **Raijintek Cyclops 360** circular 240 × 240 display through
+native Windows HID, with ten circular presets and radial/centered widgets.
+See the [Cyclops setup and verification notes](docs/cyclops.md).
+
+This is an experimental, community-oriented project, independent of the hardware vendors. Hardware support has been tested on one TF3-360SC installation and one Cyclops display. It changes display content, not cooling settings or firmware.
 
 ## Screenshots
 

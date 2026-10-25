@@ -5,12 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image"
-	"image/png"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/device"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/display"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/imageutil"
 	"github.com/kawapiki/Jonsbo-resurrection/pkg/module"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -65,6 +65,8 @@ func New(source Source, driver Driver, devices []device.Device, options Options)
 			a.Rotation = 90
 			fan++
 		case "pump":
+		case "cyclops":
+			a.View = "cyclops"
 		default:
 			return nil, fmt.Errorf("%w: display kind", module.ErrInvalid)
 		}
@@ -152,6 +154,9 @@ func (m *Manager) Run(ctx context.Context, interval time.Duration) error {
 		}(s)
 	}
 	wg.Wait()
+	if closer, ok := m.driver.(interface{ Close() error }); ok {
+		return closer.Close()
+	}
 	return nil
 }
 func (m *Manager) Once(ctx context.Context) error {
@@ -162,6 +167,10 @@ func (m *Manager) Once(ctx context.Context) error {
 		go func(s *screen) { defer wg.Done(); errs <- m.send(ctx, s) }(s)
 	}
 	wg.Wait()
+	var closeErr error
+	if closer, ok := m.driver.(interface{ Close() error }); ok {
+		closeErr = closer.Close()
+	}
 	close(errs)
 	var collected []error
 	for err := range errs {
@@ -169,7 +178,7 @@ func (m *Manager) Once(ctx context.Context) error {
 			collected = append(collected, err)
 		}
 	}
-	return errors.Join(collected...)
+	return errors.Join(append(collected, closeErr)...)
 }
 func (m *Manager) send(ctx context.Context, s *screen) (err error) {
 	m.mu.RLock()

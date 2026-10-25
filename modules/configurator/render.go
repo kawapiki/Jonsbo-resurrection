@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/kawapiki/Jonsbo-resurrection/internal/imageutil"
 	ai "github.com/kawapiki/Jonsbo-resurrection/modules/aisubscriptions"
 	"image"
 	"image/color"
@@ -110,7 +111,7 @@ func (m *Module) render(ctx context.Context, l Layout, now time.Time) (image.Ima
 		if label == "" && o.Type != "text" {
 			label = metric.Label
 		}
-		if hasAsset {
+		if hasAsset && o.Type != "ring" {
 			fill(layer, layer.Bounds(), rgba(l.Background.Color, .78))
 		}
 		labelSize := min(14, o.FontSize)
@@ -128,6 +129,14 @@ func (m *Module) render(ctx context.Context, l Layout, now time.Time) (image.Ima
 			ratio = max(0, math.Min(1, (*metric.Value-o.Min)/(o.Max-o.Min)))
 		}
 		switch o.Type {
+		case "ring":
+			compactRing(layer, ratio, metric.Value != nil, fg)
+		case "number":
+			compactNumber(layer, o, label, value, fg)
+		case "sparkline":
+			compactSparkline(layer, o, history, now, fg)
+		case "radial", "centered":
+			circularWidget(layer, o, label, value, ratio, metric.Value != nil, fg)
 		case "ai-provider":
 			animate := o.Animate == nil || *o.Animate
 			widget := ai.DrawWidgetDetail(aiSnapshot, o.Provider, o.Detail, o.W, o.H, now, animate)
@@ -222,6 +231,9 @@ func (m *Module) render(ctx context.Context, l Layout, now time.Time) (image.Ima
 		}
 		mask := image.NewUniform(color.Alpha{A: uint8(math.Round(o.Opacity * 255))})
 		draw.DrawMask(out, image.Rect(o.X, o.Y, o.X+o.W, o.Y+o.H), layer, image.Point{}, mask, image.Point{}, draw.Over)
+	}
+	if l.Width == 240 && l.Height == 240 {
+		imageutil.MaskCircle(out)
 	}
 	return out, nil
 }

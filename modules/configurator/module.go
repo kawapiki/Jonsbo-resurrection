@@ -53,6 +53,9 @@ func New(dir string, source Source) (*Module, error) {
 		l.Name = "Default " + sz.id[8:]
 		m.layouts[l.ID] = l
 	}
+	round := Themes(240, 240)[0].Layout
+	round.ID, round.Name = "default-cyclops", "Default Cyclops"
+	m.layouts[round.ID] = round
 	b, e := readBounded(filepath.Join(dir, "state.json"), maxStateBytes)
 	if os.IsNotExist(e) {
 		return m, m.cleanOrphanAssets()
@@ -113,6 +116,9 @@ func New(dir string, source Source) (*Module, error) {
 		}
 	}
 	m.layouts = s.Layouts
+	if _, ok := m.layouts[round.ID]; !ok && len(m.layouts) < maxLayouts {
+		m.layouts[round.ID] = round
+	}
 	m.assets = s.Assets
 	m.bindings = s.Bindings
 	return m, m.cleanOrphanAssets()
@@ -141,7 +147,7 @@ func (m *Module) cleanOrphanAssets() error {
 	return nil
 }
 func (*Module) Descriptor() module.Descriptor {
-	return module.Descriptor{ID: "configurator", Name: "Display configurator", Version: "1.0.0", Description: "Saved local display layouts, media and live telemetry", Views: []module.View{{ID: "default-pump", Width: 640, Height: 480}, {ID: "default-fan", Width: 640, Height: 180}}}
+	return module.Descriptor{ID: "configurator", Name: "Display configurator", Version: "1.0.0", Description: "Saved local display layouts, media and live telemetry", Views: []module.View{{ID: "default-pump", Width: 640, Height: 480}, {ID: "default-fan", Width: 640, Height: 180}, {ID: "default-cyclops", Width: 240, Height: 240}}}
 }
 func (m *Module) ValidateView(id string) error {
 	m.mu.RLock()

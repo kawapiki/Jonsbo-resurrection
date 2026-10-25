@@ -6,10 +6,10 @@ package hardware
 import (
 	"context"
 	"fmt"
-	"image"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/dashboard"
 	"github.com/kawapiki/Jonsbo-resurrection/internal/telemetry"
 	"github.com/kawapiki/Jonsbo-resurrection/pkg/module"
+	"image"
 	"sync"
 	"time"
 )
@@ -41,7 +41,7 @@ func New(interval time.Duration) (*Module, error) {
 
 func (*Module) Descriptor() module.Descriptor {
 	return module.Descriptor{ID: "hardware", Name: "System hardware", Version: "1.0.0", Description: "Live Windows CPU, memory and GPU telemetry; unavailable metrics remain null.", Views: []module.View{
-		{ID: "summary", Width: 640, Height: 480}, {ID: "cpu", Width: 640, Height: 180}, {ID: "gpu", Width: 640, Height: 180}, {ID: "memory", Width: 640, Height: 180},
+		{ID: "summary", Width: 640, Height: 480}, {ID: "cpu", Width: 640, Height: 180}, {ID: "gpu", Width: 640, Height: 180}, {ID: "memory", Width: 640, Height: 180}, {ID: "cyclops", Width: 240, Height: 240},
 	}}
 }
 
@@ -97,7 +97,7 @@ func (m *Module) Render(ctx context.Context, view string) (image.Image, error) {
 		return nil, err
 	}
 	switch view {
-	case "summary", "cpu", "gpu", "memory":
+	case "summary", "cpu", "gpu", "memory", "cyclops":
 	default:
 		return nil, fmt.Errorf("%w: hardware view", module.ErrNotFound)
 	}
