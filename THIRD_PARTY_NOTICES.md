@@ -14,3 +14,8 @@ The original JONSBO application, decompiled vendor source, captured USB traffic,
 
 The module's matching source and license must accompany distributed app binaries. Do not relabel third-party files as MIT. See `third_party/pawnio/README.md` for module hashes and replacement/rebuild instructions.
 `go-winres` v0.3.3 is a pinned build-only resource generator, not linked into the app. Its generated icon and version resources are built from the maintainer-provided signature artwork under `assets/`.
+
+Inno Setup 6.7.3 supplies the installer and uninstaller runtime. Its license is
+included at `third_party/innosetup/LICENSE.txt`; source and compiler releases:
+https://github.com/jrsoftware/issrc/tree/is-6_7_3 . The compiler is a build-only
+dependency and is not shipped inside the application payload.

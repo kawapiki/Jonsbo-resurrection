@@ -10,6 +10,8 @@ import (
 	"image/png"
 	"os"
 	"os/signal"
+	"os/user"
+	"slices"
 	"time"
 
 	"github.com/kawapiki/Jonsbo-resurrection/internal/device"
@@ -26,7 +28,7 @@ var guiBuild = "false"
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "jonsbo:", err)
-		if guiBuild == "true" && (len(os.Args) == 1 || os.Args[1] == "tray" || os.Args[1] == "startup") {
+		if guiBuild == "true" && !slices.Contains(os.Args[1:], "--quiet") && (len(os.Args) == 1 || os.Args[1] == "tray" || os.Args[1] == "startup") {
 			trayui.ShowError(err)
 		}
 		os.Exit(1)
@@ -43,6 +45,9 @@ func run(args []string) error {
 	case "tray":
 		return tray(args[1:])
 	case "startup":
+		if args[len(args)-1] == "--quiet" {
+			args = args[:len(args)-1]
+		}
 		return startup(args[1:])
 	case "help", "--help", "-h":
 		fmt.Println("Usage: jonsbo serve [--all] [--example] | stats | monitor --all | list | inspect --serial SERIAL | image --serial SERIAL --file IMAGE | pattern --serial SERIAL --number 1 [--preview FILE]")
@@ -51,6 +56,14 @@ func run(args []string) error {
 	case "serve":
 		return serve(args[1:])
 	case "stop":
+		u, err := user.Current()
+		if err != nil {
+			return err
+		}
+		args, err = startupCaller(args, u.Uid)
+		if err != nil {
+			return err
+		}
 		name := monitorName
 		if len(args) == 2 && args[1] == "--server" {
 			name = serverName

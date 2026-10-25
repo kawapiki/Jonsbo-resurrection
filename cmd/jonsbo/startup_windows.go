@@ -17,11 +17,17 @@ func startup(args []string) error {
 	if err != nil {
 		return err
 	}
-	usage := errors.New("usage: jonsbo startup enable [--elevated] | disable | status")
+	usage := errors.New("usage: jonsbo startup enable [--elevated] | disable | disable-owned | status | identity")
 	if len(args) == 0 {
 		return usage
 	}
 	switch args[0] {
+	case "identity":
+		if len(args) != 1 {
+			return usage
+		}
+		fmt.Println(u.Uid)
+		return nil
 	case "status":
 		if len(args) != 1 {
 			return usage
@@ -37,6 +43,15 @@ func startup(args []string) error {
 			return usage
 		}
 		return login.Disable()
+	case "disable-owned":
+		if len(args) != 1 {
+			return usage
+		}
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		return login.DisableOwned(exe)
 	case "enable":
 		if len(args) > 2 || (len(args) == 2 && args[1] != "--elevated") {
 			return usage

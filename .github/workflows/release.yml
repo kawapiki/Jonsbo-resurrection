@@ -36,6 +36,12 @@ jobs:
       - name: Package and checksum
         shell: pwsh
         run: ./scripts/package.ps1 -Version $env:RELEASE_VERSION
+      - name: Build Windows installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1 -Version $env:RELEASE_VERSION
+      - name: Verify installer lifecycle
+        shell: pwsh
+        run: ./scripts/test-installer.ps1 -Version $env:RELEASE_VERSION
       - name: Publish versioned download
         shell: pwsh
         env:
@@ -48,5 +54,6 @@ jobs:
           $args = @('release','create',$env:RELEASE_TAG,'--verify-tag','--title',"Jonsbo Resurrection $env:RELEASE_TAG")
           if (Test-Path $notes) { $args += @('--notes-file',$notes) } else { $args += '--generate-notes' }
           if ($env:RELEASE_VERSION.Contains('-')) { $args += '--prerelease' }
-          & gh @args $archive "$archive.sha256"
+          $installer = "dist/JonsboResurrection-$env:RELEASE_VERSION-Setup.exe"
+          & gh @args $installer "$installer.sha256" $archive "$archive.sha256"
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed; existing releases are never overwritten.' }
