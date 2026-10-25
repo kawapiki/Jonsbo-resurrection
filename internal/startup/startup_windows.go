@@ -10,6 +10,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/user"
@@ -86,6 +87,62 @@ func Disable() error {
 	return change(b, "", Disabled)
 }
 
+// DisableOwned removes only login entries pointing to exe. Uninstalling one
+// copy must leave startup registered by another installed or portable copy alone.
+func DisableOwned(exe string) error {
+	b, err := newBackend()
+	if err != nil {
+		return err
+	}
+	return disableOwned(b, exe)
+}
+
+func disableOwned(b backend, exe string) error {
+	command, err := runCommand(exe)
+	if err != nil {
+		return err
+	}
+	old, err := b.read()
+	if err != nil {
+		return err
+	}
+	desired := old
+	if strings.EqualFold(old.Run, command) {
+		desired.Run = ""
+	}
+	if old.Task != "" {
+		var task struct {
+			XMLName xml.Name `xml:"Task"`
+			Actions struct {
+				Entries []struct {
+					XMLName   xml.Name
+					Command   string
+					Arguments string
+				} `xml:",any"`
+			}
+		}
+		decoder := xml.NewDecoder(strings.NewReader(old.Task))
+		decoder.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) {
+			// Task Scheduler's COM string and JSON are already decoded. Its
+			// UTF-16 declaration describes the original XML, not these bytes.
+			if strings.EqualFold(charset, "utf-16") {
+				return input, nil
+			}
+			return nil, fmt.Errorf("unsupported startup task encoding %q", charset)
+		}
+		if err := decoder.Decode(&task); err != nil {
+			return fmt.Errorf("read startup task ownership: %w", err)
+		}
+		if len(task.Actions.Entries) == 1 {
+			action := task.Actions.Entries[0]
+			if action.XMLName.Local == "Exec" && strings.EqualFold(action.Command, exe) && action.Arguments == "tray" {
+				desired.Task = ""
+			}
+		}
+	}
+	return applyChange(b, old, desired, Disabled)
+}
+
 func change(b backend, exe string, mode Mode) error {
 	old, err := b.read()
 	if err != nil {
@@ -104,23 +161,33 @@ func change(b backend, exe string, mode Mode) error {
 		}
 		desired.Task = taskXML(exe, b.sid())
 	}
+	return applyChange(b, old, desired, mode)
+}
+
+func applyChange(b backend, old, desired snapshot, mode Mode) error {
 	first, second := "run", "task"
 	firstValue, secondValue := desired.Run, desired.Task
-	oldFirst := old.Run
+	oldFirst, oldSecond := old.Run, old.Task
 	if mode == Elevated {
 		first, second = "task", "run"
 		firstValue, secondValue = desired.Task, desired.Run
-		oldFirst = old.Task
+		oldFirst, oldSecond = old.Task, old.Run
 	}
 	// Install the replacement before removing the previous mechanism.
-	if err = b.write(first, firstValue); err != nil {
-		return err
-	}
-	if err = b.write(second, secondValue); err != nil {
-		if rollback := b.write(first, oldFirst); rollback != nil {
-			return errors.Join(err, fmt.Errorf("startup rollback failed: %w", rollback))
+	if firstValue != oldFirst {
+		if err := b.write(first, firstValue); err != nil {
+			return err
 		}
-		return err
+	}
+	if secondValue != oldSecond {
+		if err := b.write(second, secondValue); err != nil {
+			if firstValue != oldFirst {
+				if rollback := b.write(first, oldFirst); rollback != nil {
+					return errors.Join(err, fmt.Errorf("startup rollback failed: %w", rollback))
+				}
+			}
+			return err
+		}
 	}
 	return nil
 }

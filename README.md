@@ -44,7 +44,7 @@ The [AI subscription guide](docs/ai-subscriptions.md) explains sign-in detection
 
 ## Download for Windows
 
-Get the [latest versioned release](https://github.com/kawapiki/Jonsbo-resurrection/releases/latest), extract the complete ZIP, and run **JonsboResurrection.exe**. The signature icon appears in the Windows tray. Right-click it to start/stop monitoring, open logs, or enable launch at sign-in. No Go installation is needed.
+Get **JonsboResurrection-<version>-Setup.exe** from the [latest release](https://github.com/kawapiki/Jonsbo-resurrection/releases/latest), run it, and click **Install**. Setup adds a Start menu shortcut and Windows uninstall entry, then launches the app. Upgrades preserve saved layouts and startup mode. A portable ZIP is also available. The signature icon appears in the Windows tray. Right-click it to start/stop monitoring, open logs, or enable launch at sign-in. No Go installation is needed.
 
 See the [Windows app guide](docs/windows-app.md) for startup, optional elevated CPU temperature support, updates and troubleshooting. Public binaries are currently unsigned.
 

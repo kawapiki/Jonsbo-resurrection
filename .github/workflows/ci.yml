@@ -38,6 +38,28 @@ jobs:
       - name: Build Windows controller
         run: ./scripts/build.ps1
 
+  installer:
+    name: Windows installer lifecycle
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.24.x'
+          cache: false
+      - name: Build application and release payload
+        shell: pwsh
+        run: |
+          ./scripts/build.ps1
+          ./scripts/package.ps1
+          ./scripts/build-installer.ps1
+      - name: Verify install, upgrade and uninstall
+        shell: pwsh
+        run: ./scripts/test-installer.ps1
+
   portable:
     name: Portable packages / Ubuntu
     runs-on: ubuntu-latest
