@@ -45,7 +45,9 @@ occasional double blink. Set the overlay's `animate` to false to freeze idle mot
 On graceful exit, readings fade, the mascot moves into the center and grows
 inside the orbit, then winks and closes its eyes. The 1.5-second transition uses
 13 frames; the output worker keeps USB open until the sequence finishes.
-The sequence has a two-second deadline. Windows `WM_ENDSESSION` waits for bounded
+The sequence has a two-second deadline that cancels pending HID transfers.
+Windows I/O cancellation is drained before its buffers and handle are released;
+an unresponsive kernel driver can delay that cleanup. Windows `WM_ENDSESSION` waits for bounded
 child cleanup before the tray releases its job, with a three-second limit.
 An aborted end-session message does not trigger cleanup. Forced process termination
 or loss of USB power cannot guarantee a farewell.

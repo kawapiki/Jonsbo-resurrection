@@ -64,6 +64,8 @@ func (m *Module) Handler(displays Displays) http.Handler {
 				code = 404
 			case errors.Is(e, module.ErrUnavailable):
 				code = 503
+			case errors.Is(e, module.ErrUnsupported):
+				code = http.StatusMethodNotAllowed
 			}
 			jsonResponse(w, code, map[string]string{"error": e.Error()})
 		}

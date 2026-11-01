@@ -12,6 +12,14 @@ import (
 	"time"
 )
 
+func TestUnsupportedFarewellPreview(t *testing.T) {
+	m := fresh(t)
+	w := request(t, m, nil, "GET", "/layouts/default-cyclops/farewell.png?ms=0", nil)
+	if w.Code != 405 {
+		t.Fatalf("expected unsupported operation, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestBundledKuromiThemeCanBeImported(t *testing.T) {
 	data, err := os.ReadFile("../../themes/kuromi-alive/layout.json")
 	if err != nil {

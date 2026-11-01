@@ -1,11 +1,12 @@
 package winusb
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"os"
 	"runtime"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -58,6 +59,13 @@ func (c *Connection) inspectHID() error {
 // SET_REPORT (feature, ID 0) -> IOCTL_HID_SET_FEATURE; endpoint OUT -> WriteFile.
 // Both use overlapped I/O with a bounded wait and cancellation/drain on timeout.
 func (c *Connection) hidTransfer(payload []byte, feature bool) (int, error) {
+	return c.hidTransferContext(context.Background(), payload, feature)
+}
+
+func (c *Connection) hidTransferContext(ctx context.Context, payload []byte, feature bool) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	expected := 1024
 	if feature {
 		expected = 8
@@ -83,15 +91,13 @@ func (c *Connection) hidTransfer(payload []byte, feature bool) (int, error) {
 	if err != nil && err != syscall.ERROR_IO_PENDING {
 		return 0, fmt.Errorf("Cyclops HID send: %w", err)
 	}
-	wait, e := syscall.WaitForSingleObject(ov.HEvent, 2000)
-	if e != nil || wait != syscall.WAIT_OBJECT_0 {
+	if e := waitHIDTransfer(ctx, ov.HEvent); e != nil {
 		syscall.CancelIoEx(c.file, &ov)
+		// Drain before releasing the report, OVERLAPPED, or event: cancellation
+		// requests completion but does not make kernel-owned memory safe to free.
 		hidGetOverlapped.Call(uintptr(c.file), uintptr(unsafe.Pointer(&ov)), uintptr(unsafe.Pointer(&n)), 1)
 		runtime.KeepAlive(report)
-		if e != nil {
-			return 0, e
-		}
-		return 0, os.ErrDeadlineExceeded
+		return 0, e
 	}
 	ok, _, e := hidGetOverlapped.Call(uintptr(c.file), uintptr(unsafe.Pointer(&ov)), uintptr(unsafe.Pointer(&n)), 0)
 	runtime.KeepAlive(report)
@@ -107,6 +113,49 @@ func (c *Connection) hidTransfer(payload []byte, feature bool) (int, error) {
 		return 0, fmt.Errorf("Cyclops HID wrote %d of %d bytes: %w", n, expectedCount, io.ErrShortWrite)
 	}
 	return len(payload), nil
+}
+
+func waitHIDTransfer(ctx context.Context, event syscall.Handle) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		// Completed transfers return immediately. Short waits let cancellation
+		// interrupt a pending native transfer without a goroutine owning ov.
+		wait, err := syscall.WaitForSingleObject(event, 10)
+		if err != nil {
+			return err
+		}
+		switch wait {
+		case syscall.WAIT_OBJECT_0:
+			return nil
+		case uint32(syscall.WAIT_TIMEOUT):
+			continue
+		default:
+			return fmt.Errorf("unexpected HID wait result: %d", wait)
+		}
+	}
+}
+
+// WriteContext preserves the existing WinUSB path; HID waits also observe the
+// frame's cancellation and deadline, including the farewell shutdown budget.
+func (c *Connection) WriteContext(ctx context.Context, b []byte) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if c.hid {
+		return c.hidTransferContext(ctx, b, false)
+	}
+	return c.Write(b)
+}
+
+func (c *Connection) ControlContext(ctx context.Context, b []byte) (int, error) {
+	if !c.hid {
+		return 0, fmt.Errorf("Cyclops control transfers require HID")
+	}
+	return c.hidTransferContext(ctx, b, true)
 }
 
 // Control sends the exact eight-byte SET_REPORT through the factory HID driver.
