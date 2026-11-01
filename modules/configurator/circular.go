@@ -76,6 +76,8 @@ func circularThemes() []Theme {
 			num("cpu", "cpu.temp", "CPU", 45, 43, 72, 54, 21, cpu), num("gpu", "gpu.temp", "GPU", 123, 43, 72, 54, 21, gpu),
 			trace("trace", "cpu.usage", 48, 103, 144, 24, cpu), label("history", "CPU / 2 MIN", 87, 132, 80, cpu),
 			provider("openai", "openai", "strip", 48, 144, 144, 27), provider("claude", "claude", "strip", 65, 177, 110, 27)),
+		theme("cyclops-orbit", "Thermal orbit", "Large smooth CPU temperature with an animated light ring.",
+			makePart("cpu", "thermal-orbit", "cpu.temp", "CPU", 0, 0, 240, 240, 68, "#BF79FF")),
 	}
 }
 

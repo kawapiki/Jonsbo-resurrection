@@ -1,6 +1,7 @@
 package display
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"image"
@@ -34,7 +35,15 @@ func (s *session) cyclops(im image.Image) error {
 		if err := s.ctx.Err(); err != nil {
 			return err
 		}
-		n, err := t.Control(command)
+		var n int
+		var err error
+		if cancellable, ok := t.(interface {
+			ControlContext(context.Context, []byte) (int, error)
+		}); ok {
+			n, err = cancellable.ControlContext(s.ctx, command)
+		} else {
+			n, err = t.Control(command)
+		}
 		s.result.BytesWritten += n
 		if err != nil {
 			return fmt.Errorf("Cyclops display control: %w", err)

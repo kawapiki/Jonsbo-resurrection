@@ -104,3 +104,53 @@ func TestOrbitPreservesPartialTokenQualifier(t *testing.T) {
 		t.Fatal("partial usage must remain labelled in circular layout")
 	}
 }
+
+func TestStripShowsUsageWithExistingNativeLogin(t *testing.T) {
+	week, short := int64(10080), int64(300)
+	used, zero := 42.0, 0.0
+	tokens := int64(12345)
+	for _, id := range []string{data.OpenAI, data.Claude} {
+		for _, tc := range []struct {
+			name      string
+			provider  data.Provider
+			qualifier string
+			value     string
+		}{
+			{name: "weekly quota", provider: data.Provider{Connection: "connected", Quotas: []data.Quota{{WindowMinutes: &week, UsedPercent: &used}}}, value: "7D 42% USED"},
+			{name: "zero is available", provider: data.Provider{Connection: "connected", Quotas: []data.Quota{{WindowMinutes: &week, UsedPercent: &zero}}}, value: "7D 0% USED"},
+			{name: "short window fallback", provider: data.Provider{Connection: "connected", Quotas: []data.Quota{{WindowMinutes: &short, UsedPercent: &used}}}, value: "5H 42% USED"},
+			{name: "token fallback", provider: data.Provider{Connection: "connected", WeeklyTokens: &tokens}, value: "12.3K TOK / WK"},
+			{name: "partial tokens", provider: data.Provider{Connection: "connected", WeeklyTokens: &tokens, Partial: true}, qualifier: " / PARTIAL", value: "12.3K TOK / WK"},
+			{name: "local quota", provider: data.Provider{Connection: "connected", LocalQuotas: []data.Quota{{WindowMinutes: &week, UsedPercent: &used}}}, qualifier: " / LOCAL", value: "7D 42% USED"},
+			{name: "signed in without usage", provider: data.Provider{Connection: "connected"}, value: "USAGE --"},
+			{name: "expired login hides cached usage", provider: data.Provider{Connection: "reauthentication", WeeklyTokens: &tokens, Quotas: []data.Quota{{WindowMinutes: &week, UsedPercent: &used}}}, value: "Sign in"},
+			{name: "stale hides cached usage", provider: data.Provider{Connection: "connected", Stale: true, WeeklyTokens: &tokens}, value: "Stale"},
+			{name: "disconnected hides cached usage", provider: data.Provider{Connection: "disconnected", WeeklyTokens: &tokens}, value: "Offline"},
+		} {
+			t.Run(id+"/"+tc.name, func(t *testing.T) {
+				tc.provider.ID = id
+				s := data.State{Providers: []data.Provider{tc.provider}}
+				qualifier, value := stripUsage(presentProvider(s, id))
+				if qualifier != tc.qualifier || value != tc.value {
+					t.Fatalf("got %q %q; want %q %q", qualifier, value, tc.qualifier, tc.value)
+				}
+			})
+		}
+	}
+}
+
+func TestStripFrameUpdatesWhenQuotaChanges(t *testing.T) {
+	week := int64(10080)
+	used := 4.0
+	s := data.State{Providers: []data.Provider{{ID: data.OpenAI, Connection: "connected", Quotas: []data.Quota{{WindowMinutes: &week, UsedPercent: &used}}}}}
+	now := time.Now()
+	for _, size := range []image.Point{{X: 144, Y: 27}, {X: 110, Y: 27}, {X: 150, Y: 37}} {
+		used = 4
+		before := orbitBytes(DrawWidgetDetail(s, data.OpenAI, "strip", size.X, size.Y, now, false))
+		used = 53
+		after := orbitBytes(DrawWidgetDetail(s, data.OpenAI, "strip", size.X, size.Y, now, false))
+		if bytes.Equal(before, after) {
+			t.Fatalf("%v strip ignores live quota changes", size)
+		}
+	}
+}

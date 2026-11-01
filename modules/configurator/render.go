@@ -51,6 +51,10 @@ func fill(dst *image.RGBA, r image.Rectangle, c color.RGBA) {
 	draw.Draw(dst, r, &image.Uniform{C: c}, image.Point{}, draw.Over)
 }
 func (m *Module) render(ctx context.Context, l Layout, now time.Time) (image.Image, error) {
+	return m.renderTransition(ctx, l, now, -1)
+}
+
+func (m *Module) renderTransition(ctx context.Context, l Layout, now time.Time, farewell float64) (image.Image, error) {
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
@@ -111,7 +115,7 @@ func (m *Module) render(ctx context.Context, l Layout, now time.Time) (image.Ima
 		if label == "" && o.Type != "text" {
 			label = metric.Label
 		}
-		if hasAsset && o.Type != "ring" {
+		if hasAsset && o.Type != "ring" && o.Type != "thermal-orbit" {
 			fill(layer, layer.Bounds(), rgba(l.Background.Color, .78))
 		}
 		labelSize := min(14, o.FontSize)
@@ -129,6 +133,10 @@ func (m *Module) render(ctx context.Context, l Layout, now time.Time) (image.Ima
 			ratio = max(0, math.Min(1, (*metric.Value-o.Min)/(o.Max-o.Min)))
 		}
 		switch o.Type {
+		case "thermal-orbit":
+			if err := m.drawThermal(ctx, layer, o, metric.Value, now, farewell); err != nil {
+				return nil, err
+			}
 		case "ring":
 			compactRing(layer, ratio, metric.Value != nil, fg)
 		case "number":
@@ -229,7 +237,11 @@ func (m *Module) render(ctx context.Context, l Layout, now time.Time) (image.Ima
 				text(layer, 5, top+4, "WAITING FOR DATA", 7, fg)
 			}
 		}
-		mask := image.NewUniform(color.Alpha{A: uint8(math.Round(o.Opacity * 255))})
+		opacity := o.Opacity
+		if farewell >= 0 && o.Type != "thermal-orbit" {
+			opacity *= 1 - ease(farewell/.28)
+		}
+		mask := image.NewUniform(color.Alpha{A: uint8(math.Round(opacity * 255))})
 		draw.DrawMask(out, image.Rect(o.X, o.Y, o.X+o.W, o.Y+o.H), layer, image.Point{}, mask, image.Point{}, draw.Over)
 	}
 	if l.Width == 240 && l.Height == 240 {

@@ -7,6 +7,8 @@ The project-authored Go source is MIT licensed. Third-party material retains its
 | PawnIO.Modules 0.2.11 AMDFamily17.bin | Unmodified signed module embedded for CPU temperature reads | LGPL-2.1-or-later; license, full matching module source archive and provenance in `third_party/pawnio/` |
 | PawnIO 2.2.0 driver | Separately installed Windows dependency, not distributed by the app | Upstream driver license and official signed distribution at https://pawnio.eu/ |
 | Go standard library/runtime | Compiler/runtime and standard packages | Go BSD-style license at https://go.dev/LICENSE |
+| IBM Plex Sans SemiBold | Embedded antialiased thermometer glyph atlas, including slashed zero | SIL Open Font License; license and provenance in `modules/configurator/fonts/` |
+| Kuromi theme artwork | Optional generated fan-art expression sheet | Kuromi belongs to Sanrio; this project is not affiliated with or endorsed by Sanrio. See `themes/kuromi-alive/README.md` for provenance. |
 | AMD ADL | Calls the user's installed Windows graphics driver | No AMD DLL or SDK library is bundled; API references in source and docs |
 | OpenAI and Claude Code marks | Public reference icons and a code-drawn Clawd mascot identify providers; the blossom silhouette is rendered in white on dark displays | Marks belong to their respective owners; source URLs and usage notes in `internal/aibrand/README.md` |
 

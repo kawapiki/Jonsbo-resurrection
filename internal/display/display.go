@@ -81,7 +81,15 @@ func (s *session) write(p []byte) error {
 	if err := s.ctx.Err(); err != nil {
 		return err
 	}
-	n, err := s.transport.Write(p)
+	var n int
+	var err error
+	if t, ok := s.transport.(interface {
+		WriteContext(context.Context, []byte) (int, error)
+	}); ok {
+		n, err = t.WriteContext(s.ctx, p)
+	} else {
+		n, err = s.transport.Write(p)
+	}
 	s.result.BytesWritten += n
 	if err != nil {
 		return err

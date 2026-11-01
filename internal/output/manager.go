@@ -138,6 +138,7 @@ func (m *Manager) Run(ctx context.Context, interval time.Duration) error {
 		wg.Add(1)
 		go func(s *screen) {
 			defer wg.Done()
+			defer m.farewell(s)
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
 			for {
@@ -229,6 +230,13 @@ func (m *Manager) send(ctx context.Context, s *screen) (err error) {
 			return ce
 		}
 	}
+	return m.sendImage(ctx, s, a, im)
+}
+
+func (m *Manager) sendImage(ctx context.Context, s *screen, a module.Assignment, im image.Image) error {
+	if im == nil {
+		return fmt.Errorf("empty display frame")
+	}
 	w, h, err := display.Dimensions(s.device.Kind)
 	if err != nil {
 		return err
@@ -245,4 +253,57 @@ func (m *Manager) send(ctx context.Context, s *screen) (err error) {
 		return err
 	}
 	return m.driver.Send(ctx, s.device, native)
+}
+
+// Each display worker owns its connection through the last farewell frame.
+// This short best-effort sequence uses a fresh bounded context because normal
+// sensor/output cancellation has already occurred. Unsupported views exit at once.
+func (m *Manager) farewell(s *screen) {
+	source, ok := m.source.(interface {
+		FarewellFrame(context.Context, string, string, time.Duration) (image.Image, error)
+	})
+	if !ok {
+		return
+	}
+	m.mu.RLock()
+	a := s.state.Assignment
+	live := !s.state.LastSuccess.IsZero()
+	m.mu.RUnlock()
+	if !live {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	start := time.Now()
+	for frame := 0; frame <= 12; frame++ {
+		elapsed := time.Duration(frame) * 125 * time.Millisecond
+		im, err := source.FarewellFrame(ctx, a.Module, a.View, elapsed)
+		if err != nil {
+			return
+		}
+		if err = m.sendImage(ctx, s, a, im); err != nil {
+			return
+		}
+		if frame == 0 {
+			m.farewellStatus(s, "stopping")
+		}
+		wait := time.NewTimer(max(0, time.Until(start.Add(time.Duration(frame+1)*125*time.Millisecond))))
+		select {
+		case <-ctx.Done():
+			wait.Stop()
+			return
+		case <-wait.C:
+		}
+	}
+	m.farewellStatus(s, "stopped")
+}
+
+func (m *Manager) farewellStatus(s *screen, status string) {
+	m.mu.Lock()
+	s.state.Status = status
+	state := s.state
+	m.mu.Unlock()
+	if m.options.OnChange != nil {
+		m.options.OnChange(state)
+	}
 }

@@ -20,6 +20,20 @@ func TestDefaultsAndStrictConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestAnimationFrameInterval(t *testing.T) {
+	c := Default()
+	for _, interval := range []string{"125ms", "250ms", "1s", "1m"} {
+		c.FrameInterval = interval
+		if err := Validate(c); err != nil {
+			t.Fatal(interval, err)
+		}
+	}
+	c.FrameInterval = "124ms"
+	if Validate(c) == nil {
+		t.Fatal("unbounded animation rate accepted")
+	}
+}
 func TestOversizedConfigRejected(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(p, []byte(`{}`+strings.Repeat(" ", 1<<20)), 0600); err != nil {

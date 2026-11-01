@@ -412,12 +412,12 @@ function startStudio() {
     $('inspector-empty').hidden=!!layer;
     $("selection-note").textContent=layer?"Drag to move. Bottom-right handle to resize. Arrow keys to nudge.":"Select a layer to move or resize it.";
     if(!layer)return;
-    $('inspector-title').textContent=({metric:'Live value',line:'History graph',pie:'Usage ring',radial:'Radial gauge',centered:'Centered value',ring:'Rim ring',number:'Compact number',sparkline:'Mini graph',bar:'Usage bar',text:'Text','ai-provider':'AI subscription'})[layer.type] || 'Widget settings';
+    $('inspector-title').textContent=({metric:'Live value',line:'History graph',pie:'Usage ring',radial:'Radial gauge',centered:'Centered value',ring:'Rim ring',number:'Compact number',sparkline:'Mini graph',bar:'Usage bar',text:'Text','ai-provider':'AI subscription','thermal-orbit':'Thermal orbit'})[layer.type] || 'Widget settings';
     $('range-fields').hidden=!['line','pie','bar','radial','ring','sparkline'].includes(layer.type);
     for(const key of propNames)$("prop-"+key).value=layer[key] ?? "";
-    $("metric-field").hidden=layer.type==="text" || layer.type==='ai-provider';
+    $("metric-field").hidden=["text","ai-provider","thermal-orbit"].includes(layer.type);
     $('ai-fields').hidden=layer.type!=='ai-provider';
-    $('label-field').hidden=layer.type==='ai-provider';$('style-fields').hidden=layer.type==='ai-provider';
+    $('label-field').hidden=['ai-provider','thermal-orbit'].includes(layer.type);$('style-fields').hidden=layer.type==='ai-provider';
     const prefs=aiPreferences(layer);$('prop-provider').value=prefs.provider;$('prop-detail').value=prefs.detail;$('prop-animate').checked=prefs.animate;
     $('ai-motion-note').hidden=!reducedMotion.matches;
     renderAIConnection();
@@ -433,10 +433,10 @@ function startStudio() {
       context.fillStyle=layer.color;context.strokeStyle=layer.color;context.lineWidth=2;context.textBaseline="top";
       const font=layer.font_size || 20, metric=metrics.find(item=>item.id===layer.metric), value=metricValue(metrics,layer.metric);
       context.font=font+"px Segoe UI, sans-serif";
-      if(layer.type==='ai-provider') {
+      if(layer.type==='ai-provider'||layer.type==='thermal-orbit') {
         const image=state.connected && aiImages.get(aiWidgetKey(layer));
         if(image)context.drawImage(image,layer.x,layer.y,layer.w,layer.h);
-        else {context.font='14px Segoe UI, sans-serif';context.fillText((aiPreferences(layer).provider==='claude'?'Claude':'OpenAI')+' · --',layer.x+8,layer.y+8,layer.w-16);context.font='11px Segoe UI, sans-serif';context.fillText(state.connected?'Loading provider…':'Connect to the local service',layer.x+8,layer.y+32,layer.w-16);}
+        else {context.font='14px Segoe UI, sans-serif';context.fillText((layer.type==='thermal-orbit'?'CPU':aiPreferences(layer).provider==='claude'?'Claude':'OpenAI')+' · --',layer.x+8,layer.y+8,layer.w-16);context.font='11px Segoe UI, sans-serif';context.fillText(state.connected?'Loading provider…':'Connect to the local service',layer.x+8,layer.y+32,layer.w-16);}
       }
       else if(layer.type==='ring') {
         const cx=layer.x+layer.w/2,cy=layer.y+layer.h/2,r=Math.max(0,Math.min(layer.w,layer.h)/2-1),thickness=Math.max(3,r*.045),radius=Math.max(0,r-thickness/2),ratio=value===null?0:clamp((value-layer.min)/(layer.max-layer.min),0,1);
@@ -486,20 +486,21 @@ function startStudio() {
     context.restore();
   }
   function draw(){if(state.draft)paint(ctx,state.draft,true);}
-  function aiWidgetKey(layer){return JSON.stringify({...aiPreferences(layer,reducedMotion.matches),w:layer.w,h:layer.h});}
+  function widgetPreview(layer){return {...layer,x:0,y:0,...(layer.type==='ai-provider'?aiPreferences(layer,reducedMotion.matches):{animate:layer.animate!==false&&!reducedMotion.matches})};}
+  function aiWidgetKey(layer){return JSON.stringify(widgetPreview(layer));}
   async function refreshAIWidgets(){
     if(aiRefreshing||!state.connected||!state.draft)return;aiRefreshing=true;const epoch=state.epoch;
     try{
       const keys=new Set();
-      for(const layer of state.draft.overlays.filter(l=>l.type==='ai-provider')){
+      for(const layer of state.draft.overlays.filter(l=>['ai-provider','thermal-orbit'].includes(l.type))){
         const key=aiWidgetKey(layer);if(keys.has(key))continue;keys.add(key);
-        try{const blob=await request('/v1/configurator/ai-widget.png',{method:'POST',body:JSON.stringify({...layer,x:0,y:0,...aiPreferences(layer,reducedMotion.matches)}),blob:true});const image=await createImageBitmap(blob);
+        try{const blob=await request('/v1/configurator/'+(layer.type==='thermal-orbit'?'thermal':'ai')+'-widget.png',{method:'POST',body:JSON.stringify(widgetPreview(layer)),blob:true});const image=await createImageBitmap(blob);
           if(epoch!==state.epoch||!state.connected){image.close();break;}aiImages.get(key)?.close();aiImages.set(key,image);
         }catch(_){aiImages.get(key)?.close();aiImages.delete(key);}
       }
       for(const [key,image] of aiImages)if(!keys.has(key)){image.close();aiImages.delete(key);}
       draw();
-    }finally{aiRefreshing=false;clearTimeout(aiTimer);if(page==='editor'&&canvasView==='edit'&&state.connected&&state.draft?.overlays.some(l=>l.type==='ai-provider'&&aiPreferences(l,reducedMotion.matches).animate))aiTimer=setTimeout(refreshAIWidgets,400);}
+    }finally{aiRefreshing=false;clearTimeout(aiTimer);if(page==='editor'&&canvasView==='edit'&&state.connected&&state.draft?.overlays.some(l=>['ai-provider','thermal-orbit'].includes(l.type)&&widgetPreview(l).animate))aiTimer=setTimeout(refreshAIWidgets,400);}
   }
   function renderAIConnection(){
     const layer=selected();
@@ -645,6 +646,7 @@ function startStudio() {
     if(state.height===240&&type!=='radial'&&type!=='centered')Object.assign(layer,{x:45,y:60,w:150,h:type==='line'?100:90,font_size:21});
     if(type==='ring')Object.assign(layer,{x:6,y:6,w:228,h:228,font_size:7});
     if(type==='number')Object.assign(layer,{x:45,y:50,w:150,h:70,font_size:42,label:'CPU'});
+    if(type==='thermal-orbit')Object.assign(layer,{x:0,y:0,w:240,h:240,font_size:68,label:'CPU',metric:'cpu.temp',color:'#BF79FF'});
     if(type==='sparkline')Object.assign(layer,{x:45,y:125,w:150,h:36,font_size:7,label:''});
     constrainLayer(layer,state.draft.width,state.height);state.draft.overlays.push(layer);state.selected=layer.id;changed();renderLayers();renderProperties();
   });

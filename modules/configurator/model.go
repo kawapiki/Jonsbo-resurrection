@@ -30,6 +30,7 @@ type Background struct {
 	Opacity float64 `json:"opacity"`
 }
 type Overlay struct {
+	AssetID  string  `json:"asset_id,omitempty"`
 	Provider string  `json:"provider,omitempty"`
 	Animate  *bool   `json:"animate,omitempty"`
 	Detail   string  `json:"detail,omitempty"`
@@ -136,6 +137,10 @@ func ValidateLayout(l Layout) error {
 			return invalid("overlay color, opacity, font size or label")
 		}
 		switch o.Type {
+		case "thermal-orbit":
+			if o.Metric != "cpu.temp" {
+				return invalid("thermal orbit requires CPU temperature")
+			}
 		case "ai-provider":
 			if o.Provider != "" && o.Provider != "openai" && o.Provider != "claude" {
 				return invalid("AI provider")
@@ -150,6 +155,9 @@ func ValidateLayout(l Layout) error {
 			}
 		default:
 			return invalid("overlay type")
+		}
+		if o.AssetID != "" && (o.Type != "thermal-orbit" || !idPattern.MatchString(o.AssetID)) {
+			return invalid("mascot asset")
 		}
 		if !finite(o.Min) || !finite(o.Max) || o.Max <= o.Min || math.Abs(o.Min) > 1e12 || math.Abs(o.Max) > 1e12 {
 			return invalid("overlay metric range")

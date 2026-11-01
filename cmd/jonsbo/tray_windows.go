@@ -106,6 +106,10 @@ func (c *trayChild) tick() {
 }
 
 func (c *trayChild) stop() error {
+	return c.stopWithin(8 * time.Second)
+}
+
+func (c *trayChild) stopWithin(timeout time.Duration) error {
 	c.wanted = false
 	c.retryAt = time.Time{}
 	c.status = "Stopped"
@@ -120,7 +124,7 @@ func (c *trayChild) stop() error {
 	}
 	// Only our unique stop event is ever signalled; never stop a standalone API.
 	_ = signalMonitorStop(c.control)
-	timer := time.NewTimer(8 * time.Second)
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
 	case err := <-c.done:
@@ -226,6 +230,7 @@ func tray(args []string) error {
 			}
 		},
 		Start: func() error { child.retries = 0; return child.start() }, Stop: child.stop,
+		EndSession:   func() { _ = child.stopWithin(3 * time.Second) },
 		OpenLogs:     func() error { return trayui.Open(filepath.Join(dir, "server.log")) },
 		OpenReleases: func() error { return trayui.Open(releasesURL) },
 		OpenConfigurator: func() error {

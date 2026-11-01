@@ -53,6 +53,37 @@ func orbitPercent(v *float64) string {
 	return fmt.Sprintf("%.0f%%", *v)
 }
 
+// The small strip uses the same usage selection as the full provider card.
+// Keep authentication/staleness visible instead of presenting cached usage as live.
+func stripUsage(view providerPresentation) (qualifier, value string) {
+	if !view.live {
+		return "", compactProviderStatus(view.status)
+	}
+	if view.quota != nil && view.quota.UsedPercent != nil {
+		if view.localQuota {
+			qualifier = " / LOCAL"
+		}
+		return qualifier, "7D " + orbitPercent(view.quota.UsedPercent) + " USED"
+	}
+	for _, q := range view.quotas {
+		if q.WindowMinutes != nil && *q.WindowMinutes == 300 && q.UsedPercent != nil {
+			if view.localQuota {
+				qualifier = " / LOCAL"
+			}
+			return qualifier, "5H " + orbitPercent(q.UsedPercent) + " USED"
+		}
+	}
+	if view.tokens != nil {
+		if view.localTokens {
+			qualifier = " / LOCAL"
+		} else if view.scope == "PARTIAL / WEEK" {
+			qualifier = " / PARTIAL"
+		}
+		return qualifier, compactNumber(view.tokens) + " TOK / WK"
+	}
+	return "", "USAGE --"
+}
+
 func drawOrbitWidget(s data.State, id, detail string, w, h int) image.Image {
 	im := image.NewRGBA(image.Rect(0, 0, w, h))
 	view := presentProvider(s, id)
@@ -80,9 +111,14 @@ func drawOrbitWidget(s data.State, id, detail string, w, h int) image.Image {
 		statusColor = muted
 	}
 	if detail == "strip" {
-		// Native two-line status strip: no scaled-down desktop card.
-		orbitText(im, 0, name, 7, w, accent)
-		orbitText(im, min(13, max(0, h-7)), status, 14, w, statusColor)
+		// Native two-line usage strip: no scaled-down desktop card.
+		qualifier, value := stripUsage(view)
+		valueColor := statusColor
+		if view.live {
+			valueColor = foreground
+		}
+		orbitText(im, 0, name+qualifier, 7, w, accent)
+		orbitText(im, min(13, max(0, h-14)), value, 14, w, valueColor)
 		return im
 	}
 	radius := float64(min(w, h))/2 - 1

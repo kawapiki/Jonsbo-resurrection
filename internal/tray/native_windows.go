@@ -52,6 +52,7 @@ type Options struct {
 	Status                         func() string
 	Tick                           func()
 	Start, Stop                    func() error
+	EndSession                     func()
 	OpenLogs, OpenReleases         func() error
 	OpenConfigurator               func() error
 	StartupState                   func() (bool, bool, error)
@@ -202,6 +203,11 @@ func Run(ctx context.Context, o Options) error {
 			return 1 // Permit Windows logoff; WM_ENDSESSION follows.
 		case msg == 0x16:
 			if w != 0 {
+				// Windows may terminate us as soon as WM_ENDSESSION returns.
+				// Finish the bounded child cleanup before releasing the job.
+				if o.EndSession != nil {
+					o.EndSession()
+				}
 				user.NewProc("DestroyWindow").Call(hwnd)
 			}
 			return 0

@@ -5,6 +5,8 @@ A modular Go controller for the four screens on a **JONSBO TF3-360SC**, starting
 Also supports the **Raijintek Cyclops 360** circular 240 × 240 display through
 native Windows HID, with ten circular presets and radial/centered widgets.
 See the [Cyclops setup and verification notes](docs/cyclops.md).
+The optional [Kuromi – Alive theme](themes/kuromi-alive/README.md) adds a large
+CPU temperature, IBM Plex slashed-zero numerals, blinking expressions and a graceful farewell.
 
 This is an experimental, community-oriented project, independent of the hardware vendors. Hardware support has been tested on one TF3-360SC installation and one Cyclops display. It changes display content, not cooling settings or firmware.
 
@@ -119,7 +121,7 @@ A module publishes JSON and can optionally implement image rendering and typed e
 .\bin\jonsbo.exe stop --server
 ```
 
-`stats` keeps its original hardware JSON shape. API responses wrap that data with module identity, status, and timestamps. Missing sensor values are `null` / `--`, not synthetic zeroes. The conservative full-frame USB path is suitable for dashboards; configurable frame refresh is 500 ms or slower and is not a video-rate playback implementation.
+`stats` keeps its original hardware JSON shape. API responses wrap that data with module identity, status, and timestamps. Missing sensor values are `null` / `--`, not synthetic zeroes. The conservative full-frame USB path is suitable for dashboards; configurable frame refresh is 125 ms or slower and is not a video-rate playback implementation.
 
 ## License and dependencies
 

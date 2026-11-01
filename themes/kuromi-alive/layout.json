@@ -1,0 +1,31 @@
+{
+  "height": 240,
+  "overlays": [
+    {
+      "type": "thermal-orbit",
+      "opacity": 1,
+      "label": "CPU",
+      "h": 240,
+      "w": 240,
+      "y": 0,
+      "x": 0,
+      "font_size": 68,
+      "asset_id": "kuromi-expressions",
+      "id": "cpu",
+      "animate": true,
+      "color": "#BF79FF",
+      "min": 0,
+      "max": 100,
+      "metric": "cpu.temp"
+    }
+  ],
+  "name": "Kuromi - Alive",
+  "background": {
+    "color": "#08050E",
+    "asset_id": "",
+    "opacity": 1
+  },
+  "rotation": 0,
+  "width": 240,
+  "id": "kuromi-alive"
+}

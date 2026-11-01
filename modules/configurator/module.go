@@ -101,10 +101,8 @@ func New(dir string, source Source) (*Module, error) {
 		if e := ValidateLayout(l); e != nil {
 			return nil, e
 		}
-		if l.Background.AssetID != "" {
-			if _, ok := s.Assets[l.Background.AssetID]; !ok {
-				return nil, invalid("saved layout asset missing")
-			}
+		if err := validateLayoutAssets(l, s.Assets); err != nil {
+			return nil, err
 		}
 	}
 	for serial, a := range s.Bindings {

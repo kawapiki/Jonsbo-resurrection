@@ -65,8 +65,8 @@ func Validate(c Config) error {
 		return fmt.Errorf("token_file cannot be empty")
 	}
 	d, err := time.ParseDuration(c.FrameInterval)
-	if err != nil || d < 500*time.Millisecond || d > time.Minute {
-		return fmt.Errorf("frame_interval must be 500ms..1m")
+	if err != nil || d < 125*time.Millisecond || d > time.Minute {
+		return fmt.Errorf("frame_interval must be 125ms..1m")
 	}
 	if len(c.Modules) > 32 || len(c.Displays) > 32 {
 		return fmt.Errorf("too many modules/displays")
